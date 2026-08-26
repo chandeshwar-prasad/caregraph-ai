@@ -66,6 +66,30 @@ Phase 7 implements dense vector search and grounded clinical care retrieval:
 - **Vector Store Layer**: Semantic search with cosine similarity ranking and metadata filtering (`status="active"`, `category="triage"`) (`app/services/vector_store.py`).
 - **LangGraph Triage Node RAG**: Grounded clinical retrieval directly injected into `triage_node` with source provenance attribution and safe out-of-domain degradation (`app/services/knowledge.py`, `app/services/graph.py`).
 - **RAG Evaluation Suite**: 100% Top-1 retrieval accuracy, 0 unsupported claims, 0% stale document leakage (`tests/test_rag_evaluation.py`).
+- **Knowledge Base Content Transparency**: The documents indexed in the knowledge base are **synthetic curated care-navigation summaries** designed for care coordination demonstration and testing. They do not constitute authoritative medical literature or certified clinical guidelines.
+
+### **PHASE 8 — SAFETY, SERVER-SIDE TOOL AUTHORIZATION & PATIENT CONSENT: COMPLETE**
+Phase 8 establishes server-side tool access controls, patient privacy boundaries, and consent gates:
+- **Server-Side Tool Authorization Engine (`app/services/security.py`)**: Enforces an explicit role-to-tool permission matrix (`ROLE_TOOL_PERMISSIONS`), strictly prohibiting the LLM from acting as an access-control authority.
+- **Caller Identity Binding & Tenant Isolation**: Asserts caller authentication and verifies that patients can only access their own clinical records, preventing cross-patient data leaks.
+- **Patient Consent Enforcement**: Requires active, unexpired consent (`verify_patient_consent()`) before executing protected patient data tools; denies access on expired or missing consent.
+- **Minimum-Necessary Data Controls**: Automatically clamps bulk record queries to safe bounds (`MAX_RECORDS_LIMIT = 50`) and sanitizes parameter types and enums.
+- **Structured Zero-PHI Audit Logging**: Emits structured audit events containing caller ID, action, and tool names with zero sensitive free text or PHI.
+
+### **PHASE 9 — OBSERVABILITY, ZERO-PHI TELEMETRY & EVALUATION: COMPLETE**
+Phase 9 implements production telemetry, quantitative evaluation, and cost analytics:
+- **Zero-PHI Sanitization Engine (`app/services/telemetry.py`)**: Recursive scrubbing of email addresses, phone numbers, authentication tokens, passwords, and sensitive dictionary fields before telemetry emission.
+- **Non-Blocking Telemetry Tracing (`trace_span`)**: Span context manager tracking workflow execution, step latencies, token counts, and error states; metrics exposed via `GET /telemetry/metrics`.
+- **Model Router Policy & Cost Intelligence (`app/services/llm.py`)**: Task-based model tiering, token cost tracking, and no-silent-escalation enforcement; token usage and cumulative cost analytics exposed via `GET /costs`.
+- **Synthetic Benchmark Evaluation Harness (`app/services/evaluation.py`)**: Deterministic offline evaluation harness executing 55 benchmark scenarios (`app/data/evaluation_scenarios.json`) measuring intent accuracy, safety escalation, and latency.
+
+### **PHASE 10 — PRODUCTION READINESS, DOCKER CONTAINERIZATION & CI/CD: COMPLETE**
+Phase 10 establishes production containerization, CI/CD pipeline automation, and deployment configuration:
+- **Multi-Container Architecture (`docker-compose.yml`)**: Orchestrates isolated services (`caregraph-db` with PostgreSQL 16 + pgvector, `caregraph-api` on FastAPI/Uvicorn, `caregraph-ui` on Streamlit) connected via bridge network `caregraph-network` with persistent volume `caregraph_pgdata`.
+- **Production Dockerfiles (`Dockerfile.backend`, `Dockerfile.frontend`)**: Multi-stage container builds with curl healthchecks (`/health`, `/_stcore/health`) and pinned dependencies.
+- **Automated CI/CD Pipeline (`.github/workflows/ci.yml`)**: 4-stage GitHub Actions pipeline enforcing secret hygiene, 129-test pytest regression execution, Docker build verification, and staged cloud deployment checks.
+- **Secret & Configuration Hygiene**: Validated `.env*` exclusion, placeholder-only `.env.example`, and production JWT entropy requirements.
+- **Verification Boundary**: All services and health endpoints have been **locally validated via Docker Compose**. Cloud deployment targets (Render / Azure / Supabase Cloud) are architected and staged in CI/CD, with live cloud provisioning preserved for cloud milestones.
 
 ---
 
@@ -78,6 +102,14 @@ CareGraph AI maintains a comprehensive automated regression suite verifying end-
 ```
 
 *(Historical progression: 69 tests passing at Phase 7 completion; expanded to 129 tests across Phases 8–10).*
+
+### Verification & Testing Layer Distinctions
+
+CareGraph AI clearly distinguishes between its four verification layers:
+1. **Automated Regression Suite (129 Tests)**: In-memory isolated pytest execution testing all API endpoints, graph orchestration, security matrices, telemetry redaction, RAG accuracy, and CI configuration.
+2. **Synthetic Benchmark Evaluation (55 Scenarios)**: Offline evaluation harness (`app/services/evaluation.py`) executing diverse clinical scenarios against expected intent, safety escalation, and latency benchmarks.
+3. **Local Docker Runtime Validation**: Live Docker Compose execution verifying inter-container networking, PostgreSQL + pgvector persistence, backend `/health` (HTTP 200), and frontend UI reachability on local ports 8000 and 8501.
+4. **Cloud Deployment Staging**: Container images, environment mappings, and CI/CD deployment jobs configured for Render/Azure staging without live cloud mutation during local verification.
 
 ### Test Suite Breakdown (129 Tests Passing)
 
@@ -103,9 +135,9 @@ CareGraph AI maintains a comprehensive automated regression suite verifying end-
 | `tests/test_production_config.py` | 4 | Phase 10: Production JWT validation, `.env.example` placeholder hygiene, `.gitignore` secret protection |
 | `tests/test_ci_pipeline.py` | 13 | Phase 10: Dockerfile compliance, CI/CD pipeline schema, container healthcheck specifications |
 
-### E2E Verification
+### Phase 5 Scheduling Slice Live E2E Verification
 
-In addition to automated tests, Phase 5 Milestone 5 ran a comprehensive live E2E verification script against the running FastAPI server — **58/58 checks passed**, covering:
+During the completion of the Phase 5 scheduling vertical slice, a live E2E verification script was executed against the running FastAPI server — **58/58 checks passed**, validating the core scheduling, HITL approval/rejection paths, and red-flag safety intercepts:
 
 | Category | Checks | Result |
 |---|---|---|
