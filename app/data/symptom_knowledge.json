@@ -1,0 +1,32 @@
+[
+  {
+    "symptom_key": "fever",
+    "guidance": "Rest, stay well-hydrated, and monitor body temperature. Seek professional medical evaluation if fever exceeds 103°F (39.4°C), lasts longer than 3 days, or is accompanied by severe headache or stiff neck.",
+    "source_name": "CareGraph Curated Care Navigation Summary",
+    "source_type": "Curated Project Content"
+  },
+  {
+    "symptom_key": "cough",
+    "guidance": "Stay hydrated, use warm liquids or throat lozenges, and rest. Consult a healthcare provider if cough persists beyond 2-3 weeks, produces blood, or causes shortness of breath.",
+    "source_name": "CareGraph Curated Care Navigation Summary",
+    "source_type": "Curated Project Content"
+  },
+  {
+    "symptom_key": "headache",
+    "guidance": "Rest in a quiet, dark room, stay hydrated, and manage stress. Seek immediate medical attention if headache is sudden and unusually severe, or occurs with neurological symptoms.",
+    "source_name": "CareGraph Curated Care Navigation Summary",
+    "source_type": "Curated Project Content"
+  },
+  {
+    "symptom_key": "sore throat",
+    "guidance": "Gargle with warm salt water, drink warm liquids, and rest your voice. Seek medical care if accompanied by difficulty swallowing, joint pain, or rash.",
+    "source_name": "CareGraph Curated Care Navigation Summary",
+    "source_type": "Curated Project Content"
+  },
+  {
+    "symptom_key": "rash",
+    "guidance": "Keep the area clean and dry, avoid scratching, and note any changes. Seek urgent medical attention if rash spreads rapidly, forms blisters, or is accompanied by fever or severe pain.",
+    "source_name": "CareGraph Curated Care Navigation Summary",
+    "source_type": "Curated Project Content"
+  }
+]

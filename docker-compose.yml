@@ -1,0 +1,84 @@
+services:
+  caregraph-db:
+    image: pgvector/pgvector:pg16
+    container_name: caregraph-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-caregraph}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - caregraph_pgdata:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-caregraph}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - caregraph-network
+
+  caregraph-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: caregraph-api
+    restart: unless-stopped
+    depends_on:
+      caregraph-db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@caregraph-db:5432/${POSTGRES_DB:-caregraph}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      JWT_SECRET: ${JWT_SECRET:-b63ca0c9769062089b09bf9543e3bf2eb0947ee1c5e468ad4b27a3c7a0d4c82b}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-true}
+      LANGCHAIN_TRACING_V2: ${LANGCHAIN_TRACING_V2:-false}
+      LANGCHAIN_PROJECT: ${LANGCHAIN_PROJECT:-caregraph-ai}
+      LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY:-}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - caregraph-network
+
+  caregraph-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: caregraph-ui
+    restart: unless-stopped
+    depends_on:
+      caregraph-api:
+        condition: service_healthy
+    environment:
+      API_BASE_URL: http://caregraph-api:8000
+    ports:
+      - "8501:8501"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - caregraph-network
+
+volumes:
+  caregraph_pgdata:
+
+networks:
+  caregraph-network:
+    driver: bridge

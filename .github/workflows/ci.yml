@@ -1,0 +1,181 @@
+name: CareGraph AI - CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - dev
+  pull_request:
+    branches:
+      - main
+      - master
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Stage 1: Security, Configuration & Repository Hygiene
+  hygiene-check:
+    name: Security & Configuration Hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify Secret & Config Hygiene
+        run: |
+          echo "=== 1. Checking for tracked .env files ==="
+          if [ -f .env ] || [ -f .env.local ] || [ -f .env.production ]; then
+            echo "ERROR: Local .env file detected in tracked workspace!"
+            exit 1
+          fi
+
+          echo "=== 2. Validating .env.example contains placeholders only ==="
+          if grep -E "gsk_[a-zA-Z0-9]{20,}|lsv2_[a-zA-Z0-9]{20,}|eyJ[a-zA-Z0-9_-]{20,}" .env.example; then
+            echo "ERROR: Potential real API key or JWT token detected in .env.example!"
+            exit 1
+          fi
+
+          echo "=== 3. Validating .gitignore and .dockerignore exclusions ==="
+          grep -q "^\.env\*" .gitignore || (echo "ERROR: .gitignore missing .env* pattern" && exit 1)
+          grep -q "^\.env\*" .dockerignore || (echo "ERROR: .dockerignore missing .env* pattern" && exit 1)
+          echo "Secret hygiene and configuration checks PASSED."
+
+  # Stage 2: Automated Unit & Regression Test Suite
+  test-suite:
+    name: Automated Regression Suite (Python ${{ matrix.python-version }})
+    needs: hygiene-check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+    env:
+      DATABASE_URL: "sqlite:///./test.db"
+      ENVIRONMENT: "test"
+      GROQ_API_KEY: ""
+      GROQ_MODEL: "llama-3.3-70b-versatile"
+      JWT_SECRET: "ci_test_pipeline_jwt_secret_minimum_32_characters_long_12345"
+      JWT_ALGORITHM: "HS256"
+      ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+      TELEMETRY_ENABLED: "true"
+      LANGCHAIN_TRACING_V2: "false"
+      SEED_DEMO_DATA: "false"
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Pytest Regression Suite
+        run: |
+          pytest
+
+  # Stage 3: Docker Container Build Verification
+  docker-build-check:
+    name: Docker Build Validation
+    needs: test-suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Backend Image (caregraph-api)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.backend
+          push: false
+          tags: caregraph-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Frontend Image (caregraph-ui)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.frontend
+          push: false
+          tags: caregraph-ui:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Stage 4: Azure Deployment Staging & Secret Verification
+  azure-deployment-stage:
+    name: Azure Cloud Deployment Staging
+    needs: [test-suite, docker-build-check]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Check Cloud Deployment Trigger
+        id: check-deploy
+        run: |
+          if [ "${{ vars.AZURE_DEPLOY_ENABLED }}" = "true" ]; then
+            echo "enabled=true" >> $GITHUB_OUTPUT
+            echo "Azure automated deployment is ENABLED via repository variable AZURE_DEPLOY_ENABLED."
+          else
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "Azure deployment skipped: AZURE_DEPLOY_ENABLED repository variable is not set to 'true'."
+            echo "CI pipeline completed successfully without deploying."
+          fi
+
+      - name: Authenticate to Azure Cloud (Placeholder for Future Cloud Milestone)
+        if: steps.check-deploy.outputs.enabled == 'true'
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Log in to Azure Container Registry (ACR)
+        if: steps.check-deploy.outputs.enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.REGISTRY_LOGIN_SERVER }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build and Push Production Images to ACR
+        if: steps.check-deploy.outputs.enabled == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.backend
+          push: true
+          tags: ${{ secrets.REGISTRY_LOGIN_SERVER }}/caregraph-api:${{ github.sha }},${{ secrets.REGISTRY_LOGIN_SERVER }}/caregraph-api:latest
+
+      - name: Build and Push Frontend Image to ACR
+        if: steps.check-deploy.outputs.enabled == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.frontend
+          push: true
+          tags: ${{ secrets.REGISTRY_LOGIN_SERVER }}/caregraph-ui:${{ github.sha }},${{ secrets.REGISTRY_LOGIN_SERVER }}/caregraph-ui:latest
