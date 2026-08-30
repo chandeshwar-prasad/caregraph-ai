@@ -158,4 +158,20 @@ class VoiceSynthesisRequest(BaseModel):
     voice_id: Optional[str] = Field(None, description="Optional voice identifier")
 
 
+# --- Phase 11C Vision Schemas ---
+
+class VisionAnalysisResponse(BaseModel):
+    detected_features: List[str] = Field(default_factory=list, description="Visual features, document fields, or objects detected")
+    description: str = Field(..., description="High-level descriptive overview of the image")
+    media_type: str = Field(default="image/png", description="Image MIME type")
+    width: Optional[int] = Field(None, description="Image width in pixels")
+    height: Optional[int] = Field(None, description="Image height in pixels")
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0, description="Analysis confidence score")
+    clinical_disclaimer: str = Field(
+        default="CareGraph AI Vision is for care navigation and symptom observation assistance only, and does not provide clinical diagnosis or diagnostic decisions.",
+        description="Mandatory clinical safety disclaimer"
+    )
+    is_mock: bool = Field(default=True, description="Flag indicating mock mode vs cloud model execution")
+
+
 

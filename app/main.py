@@ -690,3 +690,57 @@ def synthesize_speech_endpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while synthesizing speech."
         )
+
+
+# --- Phase 11C Vision API Endpoints ---
+
+from app.services import vision
+from app.services.vision import VisionError, VisionPayloadError, VisionAuthenticationError, VisionConnectionError, VisionProcessingError
+
+@app.post("/vision/analyze", response_model=schemas_ai.VisionAnalysisResponse)
+async def analyze_image_endpoint(
+    file: UploadFile = File(..., description="Image file to analyze (in-memory processing only)"),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """
+    Analyze healthcare documents or visual observations for care navigation assistance.
+    JWT authenticated (patient or admin). Zero disk retention. Strictly non-diagnostic.
+    """
+    try:
+        image_bytes = await file.read()
+        vision_service = vision.get_vision_service()
+        result = vision_service.analyze_image(
+            image_bytes=image_bytes,
+            filename=file.filename or "image.png",
+            content_type=file.content_type or "image/png"
+        )
+        return result
+    except VisionPayloadError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except VisionAuthenticationError as e:
+        logger.error(f"Vision authentication error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Vision analysis service authentication failure."
+        )
+    except VisionConnectionError as e:
+        logger.error(f"Vision connection error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Vision analysis service temporarily unavailable."
+        )
+    except (VisionError, VisionProcessingError) as e:
+        logger.error(f"Vision processing error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Vision image analysis failed."
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in vision analysis: {type(e).__name__}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while analyzing the image."
+        )
