@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
-from typing import Optional
+from typing import Optional, Dict, Any, List
 
 class UserCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
@@ -74,4 +74,65 @@ class ConsentResponse(BaseModel):
     revoked_at: Optional[datetime] = None
     expires_at: Optional[datetime] = None
     version: str
+
+
+# --- Phase 11A Analytics Schemas ---
+
+class AppointmentsAnalytics(BaseModel):
+    total_count: int
+    by_status: dict[str, int] = Field(default_factory=dict)
+    by_specialty: dict[str, int] = Field(default_factory=dict)
+    by_doctor: dict[str, int] = Field(default_factory=dict)
+
+class MedicationsAnalytics(BaseModel):
+    total_count: int
+    active_count: int
+    inactive_count: int
+    by_name: dict[str, int] = Field(default_factory=dict)
+    by_frequency: dict[str, int] = Field(default_factory=dict)
+
+class VitalsAnalytics(BaseModel):
+    total_count: int
+    by_type: dict[str, int] = Field(default_factory=dict)
+
+class ConsentsAnalytics(BaseModel):
+    total_count: int
+    by_type: dict[str, int] = Field(default_factory=dict)
+    by_status: dict[str, int] = Field(default_factory=dict)
+
+class RemindersAnalytics(BaseModel):
+    total_count: int
+    by_status: dict[str, int] = Field(default_factory=dict)
+
+class ClinicalOperationsAnalyticsResponse(BaseModel):
+    total_patients: int
+    appointments: AppointmentsAnalytics
+    medications: MedicationsAnalytics
+    vitals: VitalsAnalytics
+    consents: ConsentsAnalytics
+    reminders: RemindersAnalytics
+    zero_phi: bool = True
+
+class AgentTelemetryAnalyticsResponse(BaseModel):
+    total_events: int
+    avg_latency_ms: float
+    safety_escalations: int
+    error_rate: float
+    intents_breakdown: dict[str, int] = Field(default_factory=dict)
+    agents_breakdown: dict[str, int] = Field(default_factory=dict)
+    status_breakdown: dict[str, int] = Field(default_factory=dict)
+    tool_breakdown: dict[str, int] = Field(default_factory=dict)
+    recent_traces_count: int
+    zero_phi: bool = True
+
+class CostIntelligenceAnalyticsResponse(BaseModel):
+    total_prompt_tokens: int
+    total_completion_tokens: int
+    total_tokens: int
+    total_cost_usd: float
+    avg_cost_per_workflow_usd: float
+    model_usage: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    tier_distribution: dict[str, int] = Field(default_factory=dict)
+    pricing_table: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    zero_phi: bool = True
 

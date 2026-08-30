@@ -524,3 +524,78 @@ def get_cost_and_routing_metrics():
         "routing_policy": ModelRouter.get_routing_policy_summary(),
         "comparative_analysis": evaluate_model_router_performance(sample_queries_count=50)
     }
+
+
+# --- Phase 11A Power BI & Analytics Endpoints ---
+
+from fastapi import Response
+from app.services import analytics
+
+@app.get("/analytics/clinical-operations", response_model=schemas.ClinicalOperationsAnalyticsResponse)
+def get_clinical_operations_analytics(
+    current_user: models.User = Depends(auth.require_role("admin")),
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieve aggregated clinical operations metrics (appointments, medications, vitals, consents).
+    Admin-only, zero-PHI server-side aggregation for Power BI executive dashboards.
+    """
+    return analytics.get_clinical_operations_metrics(db)
+
+
+@app.get("/analytics/agent-telemetry", response_model=schemas.AgentTelemetryAnalyticsResponse)
+def get_agent_telemetry_analytics(
+    current_user: models.User = Depends(auth.require_role("admin"))
+):
+    """
+    Retrieve real-time multi-agent performance and operational telemetry metrics.
+    Admin-only, zero-PHI server-side aggregation for Power BI agent monitoring.
+    """
+    return analytics.get_agent_telemetry_metrics()
+
+
+@app.get("/analytics/cost-intelligence", response_model=schemas.CostIntelligenceAnalyticsResponse)
+def get_cost_intelligence_analytics(
+    current_user: models.User = Depends(auth.require_role("admin"))
+):
+    """
+    Retrieve cumulative token consumption, tier distributions, and financial cost accounting.
+    Admin-only, zero-PHI server-side aggregation for Power BI cost intelligence.
+    """
+    return analytics.get_cost_intelligence_metrics()
+
+
+@app.get("/analytics/export/{dataset_name}")
+def export_analytics_dataset(
+    dataset_name: str,
+    format: str = Query("json", description="Export format: 'json' or 'csv'"),
+    current_user: models.User = Depends(auth.require_role("admin")),
+    db: Session = Depends(get_db)
+):
+    """
+    Export structured, zero-PHI tabular datasets formatted for Power Query / Power BI Desktop.
+    Supported dataset names: clinical-operations, appointments, medications, vitals, consents, agent-telemetry, cost-intelligence.
+    Supported formats: json, csv.
+    """
+    fmt = format.lower().strip()
+    if fmt not in ["json", "csv"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unsupported format. Choose 'json' or 'csv'."
+        )
+
+    records, csv_data = analytics.get_export_dataset(db, dataset_name=dataset_name, format_type=fmt)
+    if records is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset '{dataset_name}' not found. Available datasets: clinical-operations, appointments, medications, vitals, consents, agent-telemetry, cost-intelligence."
+        )
+
+    if fmt == "csv":
+        return Response(
+            content=csv_data or "",
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={dataset_name}.csv"}
+        )
+
+    return records
