@@ -145,4 +145,17 @@ class KnowledgeDocumentResponse(BaseModel):
     created_at: Optional[datetime] = None
 
 
+# --- Phase 11B Voice Schemas ---
+
+class VoiceTranscriptionResponse(BaseModel):
+    transcript: str
+    detected_language: str = "en"
+    duration_seconds: float = 0.0
+    is_mock: bool = True
+
+class VoiceSynthesisRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=2000, description="Text to synthesize to speech (max 2000 chars)")
+    voice_id: Optional[str] = Field(None, description="Optional voice identifier")
+
+
 

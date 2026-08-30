@@ -599,3 +599,94 @@ def export_analytics_dataset(
         )
 
     return records
+
+
+# --- Phase 11B Voice API Endpoints ---
+
+from fastapi import UploadFile, File
+from app.services import voice
+from app.services.voice import VoiceError, VoicePayloadError, VoiceAuthenticationError, VoiceConnectionError
+
+@app.post("/voice/transcribe", response_model=schemas_ai.VoiceTranscriptionResponse)
+async def transcribe_audio_endpoint(
+    file: UploadFile = File(..., description="Audio file to transcribe (in-memory processing only)"),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """
+    Transcribe speech audio into text using in-memory STT provider.
+    JWT authenticated (patient or admin). Zero disk retention.
+    """
+    try:
+        audio_bytes = await file.read()
+        stt_service = voice.get_stt_service()
+        result = stt_service.transcribe(
+            audio_bytes=audio_bytes,
+            filename=file.filename or "audio.wav",
+            content_type=file.content_type or "audio/wav"
+        )
+        return result
+    except VoicePayloadError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except VoiceAuthenticationError as e:
+        logger.error(f"Voice authentication error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Voice transcription service authentication failure."
+        )
+    except VoiceConnectionError as e:
+        logger.error(f"Voice connection error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Voice transcription service temporarily unavailable."
+        )
+    except VoiceError as e:
+        logger.error(f"Voice processing error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Speech transcription failed."
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in voice transcription: {type(e).__name__}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while processing the audio."
+        )
+
+
+@app.post("/voice/synthesize")
+def synthesize_speech_endpoint(
+    payload: schemas_ai.VoiceSynthesisRequest,
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """
+    Synthesize safe text into spoken audio stream.
+    JWT authenticated (patient or admin). Zero disk retention.
+    """
+    try:
+        tts_service = voice.get_tts_service()
+        result = tts_service.synthesize(text=payload.text, voice_id=payload.voice_id)
+        return Response(
+            content=result["audio_bytes"],
+            media_type=result.get("media_type", "audio/wav"),
+            headers={"Content-Disposition": "inline; filename=synthesis.wav"}
+        )
+    except VoicePayloadError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except VoiceError as e:
+        logger.error(f"Voice synthesis error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Speech synthesis failed."
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in voice synthesis: {type(e).__name__}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while synthesizing speech."
+        )
