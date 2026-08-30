@@ -174,4 +174,36 @@ class VisionAnalysisResponse(BaseModel):
     is_mock: bool = Field(default=True, description="Flag indicating mock mode vs cloud model execution")
 
 
+# --- Phase 11D Messaging Schemas ---
+
+
+class MessagingSendRequest(BaseModel):
+    recipient: str = Field(..., min_length=7, max_length=25, description="E.164 formatted phone number or validated recipient string")
+    body: str = Field(..., min_length=1, max_length=1600, description="Message text content (max 1600 chars)")
+    channel: str = Field(default="sms", description="Delivery channel ('sms' or 'whatsapp')")
+    template_name: Optional[str] = Field(None, description="Optional approved WhatsApp template identifier")
+    template_params: Optional[Dict[str, Any]] = Field(None, description="Optional template parameters")
+
+class MessagingSendResponse(BaseModel):
+    success: bool
+    channel: str
+    provider: str
+    message_id: str
+    status: str
+    error_category: Optional[str] = None
+    is_mock: bool = True
+
+
+class MessagingOptOutRequest(BaseModel):
+    recipient: str = Field(..., min_length=7, max_length=25, description="E.164 formatted phone number")
+    keyword: str = Field(..., min_length=1, max_length=50, description="Opt-out command text or keyword (e.g. STOP, UNSUBSCRIBE)")
+    channel: str = Field(default="sms", description="Channel from which to opt out ('sms' or 'whatsapp')")
+
+
+class MessagingOptOutResponse(BaseModel):
+    success: bool
+    opted_out: bool
+    keyword_matched: bool
+    channel: str
+    status: str
 

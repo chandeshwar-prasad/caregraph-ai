@@ -744,3 +744,107 @@ async def analyze_image_endpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while analyzing the image."
         )
+
+
+# --- Phase 11D Messaging API Endpoints ---
+
+from app.services import messaging
+from app.services.messaging import (
+    MessagingError,
+    MessagingPayloadError,
+    MessagingRecipientError,
+    MessagingAuthenticationError,
+    MessagingConnectionError,
+    MessagingProviderError,
+    MessagingConsentError,
+)
+
+@app.post("/messaging/send", response_model=schemas_ai.MessagingSendResponse)
+def send_message_endpoint(
+    payload: schemas_ai.MessagingSendRequest,
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """
+    Send an outbound notification via SMS or WhatsApp.
+    JWT authenticated (patient or admin). Zero disk retention. PHI-sanitized metadata.
+    """
+    try:
+        service = messaging.get_messaging_service(channel=payload.channel)
+        result = service.send_message(
+            recipient=payload.recipient,
+            body=payload.body,
+            channel=payload.channel,
+            template_name=payload.template_name,
+            template_params=payload.template_params
+        )
+        return result
+    except (MessagingPayloadError, MessagingRecipientError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except MessagingConsentError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
+    except MessagingAuthenticationError as e:
+        logger.error(f"Messaging authentication error on channel {payload.channel}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Messaging provider authentication failure."
+        )
+    except MessagingConnectionError as e:
+        logger.error(f"Messaging connection error on channel {payload.channel}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Messaging service temporarily unavailable."
+        )
+    except (MessagingProviderError, MessagingError) as e:
+        logger.error(f"Messaging provider error on channel {payload.channel}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to send message via provider."
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in messaging send: {type(e).__name__}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while sending the message."
+        )
+
+
+@app.post("/messaging/opt-out", response_model=schemas_ai.MessagingOptOutResponse)
+def messaging_opt_out_endpoint(
+    payload: schemas_ai.MessagingOptOutRequest,
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """
+    Process recipient opt-out request (e.g. STOP, UNSUBSCRIBE, CANCEL).
+    JWT authenticated. Zero disk retention. Sanitized metadata.
+    """
+    try:
+        norm_channel = messaging.validate_channel(payload.channel)
+        messaging.normalize_and_validate_recipient(payload.recipient)
+        is_opted_out = messaging.is_opt_out_keyword(payload.keyword)
+
+        logger.info(f"Processed messaging opt-out check for channel '{norm_channel}'. Keyword matched: {is_opted_out}")
+
+        return {
+            "success": True,
+            "opted_out": is_opted_out,
+            "keyword_matched": is_opted_out,
+            "channel": norm_channel,
+            "status": "opted_out" if is_opted_out else "active"
+        }
+    except (MessagingPayloadError, MessagingRecipientError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in messaging opt-out: {type(e).__name__}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while processing the opt-out request."
+        )
