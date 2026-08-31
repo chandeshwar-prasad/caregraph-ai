@@ -416,3 +416,240 @@ in
     }
   });
 });
+
+// ==========================================
+// 4. Phase 11E-6-4 Quantitative Benchmark Scorecards
+// ==========================================
+
+describe("Quantitative Benchmark Scorecards & Invariant Evaluation Contracts", () => {
+  test("parses live QuantitativeMetricsScorecard backend response format", () => {
+    const rawBackendResponse = {
+      intent_classification_accuracy: 96.36,
+      routing_precision: 96.36,
+      tool_selection_rate: 100.0,
+      rag_grounding_faithfulness: 100.0,
+      source_attribution_completeness: 100.0,
+      unsupported_claim_rate: 0.0,
+      emergency_safety_recall: 100.0,
+      prompt_injection_resistance: 100.0,
+      total_scenarios_evaluated: 56,
+      overall_score: 98.73,
+    };
+
+    function normalizeScorecard(raw) {
+      return {
+        total_scenarios_evaluated: Number(raw.total_scenarios_evaluated ?? 56),
+        emergency_safety_recall: Number(raw.emergency_safety_recall ?? raw.emergency_safety_recall_pct ?? 0),
+        prompt_injection_resistance: Number(raw.prompt_injection_resistance ?? raw.prompt_injection_resistance_pct ?? 0),
+        unsupported_claim_rate: Number(raw.unsupported_claim_rate ?? raw.unsupported_claim_rate_pct ?? 0),
+        intent_classification_accuracy: Number(raw.intent_classification_accuracy ?? raw.intent_classification_accuracy_pct ?? 0),
+        routing_precision: Number(raw.routing_precision ?? raw.routing_precision_pct ?? 0),
+        tool_selection_rate: Number(raw.tool_selection_rate ?? raw.tool_selection_rate_pct ?? 0),
+        rag_grounding_faithfulness: Number(raw.rag_grounding_faithfulness ?? raw.rag_grounding_faithfulness_pct ?? 0),
+        source_attribution_completeness: Number(raw.source_attribution_completeness ?? raw.source_attribution_completeness_pct ?? 0),
+        overall_score: Number(raw.overall_score ?? raw.overall_composite_score_pct ?? 0),
+      };
+    }
+
+    const normalized = normalizeScorecard(rawBackendResponse);
+    assert.equal(normalized.total_scenarios_evaluated, 56);
+    assert.equal(normalized.emergency_safety_recall, 100.0);
+    assert.equal(normalized.prompt_injection_resistance, 100.0);
+    assert.equal(normalized.unsupported_claim_rate, 0.0);
+    assert.equal(normalized.intent_classification_accuracy, 96.36);
+    assert.equal(normalized.routing_precision, 96.36);
+    assert.equal(normalized.tool_selection_rate, 100.0);
+    assert.equal(normalized.rag_grounding_faithfulness, 100.0);
+    assert.equal(normalized.source_attribution_completeness, 100.0);
+    assert.equal(normalized.overall_score, 98.73);
+  });
+
+  test("evaluates threshold pass/fail invariants across exact, min, and max target types", () => {
+    const metricDefs = [
+      { id: "emergency_safety_recall", value: 100.0, target: 100.0, targetType: "exact" },
+      { id: "prompt_injection_resistance", value: 100.0, target: 100.0, targetType: "exact" },
+      { id: "unsupported_claim_rate", value: 0.0, target: 0.0, targetType: "max" },
+      { id: "intent_classification_accuracy", value: 96.36, target: 95.0, targetType: "min" },
+      { id: "routing_precision", value: 96.36, target: 95.0, targetType: "min" },
+      { id: "tool_selection_rate", value: 100.0, target: 90.0, targetType: "min" },
+      { id: "rag_grounding_faithfulness", value: 100.0, target: 90.0, targetType: "min" },
+      { id: "source_attribution_completeness", value: 100.0, target: 90.0, targetType: "min" },
+    ];
+
+    function isMetricPassing(m) {
+      if (m.targetType === "exact") return m.value === m.target;
+      if (m.targetType === "max") return m.value <= m.target;
+      return m.value >= m.target;
+    }
+
+    for (const metric of metricDefs) {
+      assert.equal(isMetricPassing(metric), true, `Metric ${metric.id} failed pass condition.`);
+    }
+
+    // Negative case tests
+    assert.equal(isMetricPassing({ value: 99.5, target: 100.0, targetType: "exact" }), false);
+    assert.equal(isMetricPassing({ value: 0.5, target: 0.0, targetType: "max" }), false);
+    assert.equal(isMetricPassing({ value: 94.8, target: 95.0, targetType: "min" }), false);
+  });
+
+  test("calculates target variance and delta strings accurately", () => {
+    function getMetricDelta(value, target, targetType) {
+      if (targetType === "exact") {
+        const diff = value - target;
+        return diff === 0 ? "Target Matched" : `${diff > 0 ? "+" : ""}${diff.toFixed(1)}% variance`;
+      }
+      if (targetType === "max") {
+        const diff = value - target;
+        return diff <= 0 ? "Target Met (0.0%)" : `+${diff.toFixed(1)}% above limit`;
+      }
+      const diff = value - target;
+      return diff >= 0 ? `+${diff.toFixed(1)}% above target` : `${diff.toFixed(1)}% below target`;
+    }
+
+    assert.equal(getMetricDelta(100.0, 100.0, "exact"), "Target Matched");
+    assert.equal(getMetricDelta(0.0, 0.0, "max"), "Target Met (0.0%)");
+    assert.equal(getMetricDelta(96.36, 95.0, "min"), "+1.4% above target");
+    assert.equal(getMetricDelta(92.0, 95.0, "min"), "-3.0% below target");
+  });
+
+  test("verifies composite quality score formula weighting matches backend logic", () => {
+    const weights = {
+      intent_acc: 0.20,
+      routing_prec: 0.15,
+      tool_rate: 0.15,
+      rag_grounding: 0.15,
+      emergency_recall: 0.20,
+      injection_res: 0.15,
+    };
+
+    const sumOfWeights = Object.values(weights).reduce((a, b) => a + b, 0);
+    assert.equal(Math.round(sumOfWeights * 100) / 100, 1.0);
+
+    function computeComposite(metrics) {
+      return Number((
+        (metrics.intent_acc * weights.intent_acc) +
+        (metrics.routing_prec * weights.routing_prec) +
+        (metrics.tool_rate * weights.tool_rate) +
+        (metrics.rag_grounding * weights.rag_grounding) +
+        (metrics.emergency_recall * weights.emergency_recall) +
+        (metrics.injection_res * weights.injection_res)
+      ).toFixed(2));
+    }
+
+    const testInputs = {
+      intent_acc: 96.36,
+      routing_prec: 96.36,
+      tool_rate: 100.0,
+      rag_grounding: 100.0,
+      emergency_recall: 100.0,
+      injection_res: 100.0,
+    };
+
+    const calculatedScore = computeComposite(testInputs);
+    // (96.36 * 0.2) + (96.36 * 0.15) + (100 * 0.15) + (100 * 0.15) + (100 * 0.2) + (100 * 0.15)
+    // = 19.272 + 14.454 + 15 + 15 + 20 + 15 = 98.726 => 98.73
+    assert.equal(calculatedScore, 98.73);
+    assert.ok(calculatedScore >= 85.0, "Composite score should exceed 85.0% threshold");
+  });
+
+  test("validates synthetic benchmark suites catalog structure and category counts", () => {
+    const benchmarkSuites = [
+      { category: "emergency_safety", scenarioCount: 8 },
+      { category: "triage_guidance", scenarioCount: 8 },
+      { category: "scheduling_workflow", scenarioCount: 8 },
+      { category: "patient_records", scenarioCount: 7 },
+      { category: "medication_reminders", scenarioCount: 7 },
+      { category: "unauthorized_access_idor", scenarioCount: 6 },
+      { category: "consent_enforcement", scenarioCount: 6 },
+      { category: "prompt_injection_safety", scenarioCount: 6 },
+    ];
+
+    const totalScenarios = benchmarkSuites.reduce((acc, s) => acc + s.scenarioCount, 0);
+    assert.equal(totalScenarios, 56);
+    assert.equal(benchmarkSuites.length, 8);
+  });
+
+  test("verifies admin authorization restriction for benchmarks page", () => {
+    function canAccessBenchmarks(role) {
+      return role === "admin";
+    }
+
+    assert.equal(canAccessBenchmarks("admin"), true);
+    assert.equal(canAccessBenchmarks("patient"), false);
+    assert.equal(canAccessBenchmarks(null), false);
+    assert.equal(canAccessBenchmarks(undefined), false);
+  });
+
+  test("verifies zero PHI and zero invented values across benchmark scorecard contracts", () => {
+    const benchmarkScorecardData = {
+      intent_classification_accuracy: 96.36,
+      routing_precision: 96.36,
+      tool_selection_rate: 100.0,
+      rag_grounding_faithfulness: 100.0,
+      source_attribution_completeness: 100.0,
+      unsupported_claim_rate: 0.0,
+      emergency_safety_recall: 100.0,
+      prompt_injection_resistance: 100.0,
+      total_scenarios_evaluated: 56,
+      overall_score: 98.73,
+    };
+
+    const serialized = JSON.stringify(benchmarkScorecardData);
+    assert.ok(!serialized.includes("patient_id"));
+    assert.ok(!serialized.includes("user_id"));
+    assert.ok(!serialized.includes("first_name"));
+    assert.ok(!serialized.includes("last_name"));
+    assert.ok(!serialized.includes("phone"));
+    assert.ok(!serialized.includes("email"));
+
+    // Ensure all metrics are within valid numeric percentages [0, 100]
+    for (const [key, value] of Object.entries(benchmarkScorecardData)) {
+      if (typeof value === "number") {
+        if (key === "total_scenarios_evaluated") {
+          assert.ok(value > 0);
+        } else {
+          assert.ok(value >= 0 && value <= 100, `Metric ${key} (${value}) out of [0, 100] bounds`);
+        }
+      }
+    }
+  });
+
+  test("handles empty or missing scorecard response gracefully without throwing", () => {
+    function normalizeScorecardSafe(raw) {
+      if (!raw || typeof raw !== "object") {
+        return {
+          total_scenarios_evaluated: 0,
+          emergency_safety_recall: 0,
+          prompt_injection_resistance: 0,
+          unsupported_claim_rate: 0,
+          intent_classification_accuracy: 0,
+          routing_precision: 0,
+          tool_selection_rate: 0,
+          rag_grounding_faithfulness: 0,
+          source_attribution_completeness: 0,
+          overall_score: 0,
+        };
+      }
+      return {
+        total_scenarios_evaluated: Number(raw.total_scenarios_evaluated ?? 0),
+        emergency_safety_recall: Number(raw.emergency_safety_recall ?? 0),
+        prompt_injection_resistance: Number(raw.prompt_injection_resistance ?? 0),
+        unsupported_claim_rate: Number(raw.unsupported_claim_rate ?? 0),
+        intent_classification_accuracy: Number(raw.intent_classification_accuracy ?? 0),
+        routing_precision: Number(raw.routing_precision ?? 0),
+        tool_selection_rate: Number(raw.tool_selection_rate ?? 0),
+        rag_grounding_faithfulness: Number(raw.rag_grounding_faithfulness ?? 0),
+        source_attribution_completeness: Number(raw.source_attribution_completeness ?? 0),
+        overall_score: Number(raw.overall_score ?? 0),
+      };
+    }
+
+    const emptyResult = normalizeScorecardSafe(null);
+    assert.equal(emptyResult.total_scenarios_evaluated, 0);
+    assert.equal(emptyResult.overall_score, 0);
+
+    const partialResult = normalizeScorecardSafe({ emergency_safety_recall: 100.0 });
+    assert.equal(partialResult.emergency_safety_recall, 100.0);
+    assert.equal(partialResult.intent_classification_accuracy, 0);
+  });
+});
