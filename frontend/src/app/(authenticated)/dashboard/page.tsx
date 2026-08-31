@@ -4,11 +4,24 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "../../../context/AuthContext";
 import { apiClient } from "../../../lib/api-client";
-import { HealthResponse } from "../../../types/api";
+import {
+  HealthResponse,
+  AppointmentResponse,
+  VitalResponse,
+  MedicationResponse,
+  MedicationReminderResponse,
+} from "../../../types/api";
 
 export default function DashboardPage() {
   const { user, role, patientProfile } = useAuth();
   const [health, setHealth] = useState<HealthResponse | null>(null);
+
+  // Patient live metrics
+  const [appointments, setAppointments] = useState<AppointmentResponse[]>([]);
+  const [vitals, setVitals] = useState<VitalResponse[]>([]);
+  const [medications, setMedications] = useState<MedicationResponse[]>([]);
+  const [reminders, setReminders] = useState<MedicationReminderResponse[]>([]);
+  const [isLoadingMetrics, setIsLoadingMetrics] = useState<boolean>(role === "patient");
 
   useEffect(() => {
     let mounted = true;
@@ -21,10 +34,30 @@ export default function DashboardPage() {
         if (mounted) setHealth(null);
       });
 
+    if (role === "patient") {
+      Promise.allSettled([
+        apiClient.getMyAppointments(),
+        apiClient.getMyVitals(undefined, 5),
+        apiClient.getMyMedications(),
+        apiClient.getMyReminders(),
+      ]).then(([aptRes, vitRes, medRes, remRes]) => {
+        if (!mounted) return;
+        if (aptRes.status === "fulfilled") setAppointments(aptRes.value || []);
+        if (vitRes.status === "fulfilled") setVitals(vitRes.value || []);
+        if (medRes.status === "fulfilled") setMedications(medRes.value || []);
+        if (remRes.status === "fulfilled") setReminders(remRes.value || []);
+        setIsLoadingMetrics(false);
+      });
+    }
+
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [role]);
+
+  const upcomingAppointments = appointments.filter((a) => a.status === "scheduled");
+  const activeMedications = medications.filter((m) => m.is_active);
+  const activeReminders = reminders.filter((r) => r.status === "active");
 
   return (
     <div>
@@ -66,6 +99,64 @@ export default function DashboardPage() {
       {/* Patient Dashboard Content */}
       {role === "patient" && (
         <div className="flex flex-col gap-6">
+          {/* Patient Health Overview Metrics Bar */}
+          <div>
+            <h3 style={{ marginBottom: "var(--space-3)", color: "var(--brand-primary)" }}>
+              📊 Health & Care Overview
+            </h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "var(--space-4)" }}>
+              <Link href="/appointments" className="card card-interactive" style={{ textDecoration: "none" }}>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-dim)", textTransform: "uppercase" }}>
+                  Upcoming Consultations
+                </div>
+                <div style={{ fontSize: "2rem", fontWeight: 700, color: "var(--brand-primary)", margin: "var(--space-1) 0" }}>
+                  {isLoadingMetrics ? "..." : upcomingAppointments.length}
+                </div>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+                  {upcomingAppointments.length > 0
+                    ? `Next: ${upcomingAppointments[0].appointment_time.slice(0, 16)}`
+                    : "No appointments scheduled"}
+                </div>
+              </Link>
+
+              <Link href="/vitals" className="card card-interactive" style={{ textDecoration: "none" }}>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-dim)", textTransform: "uppercase" }}>
+                  Latest Vital Reading
+                </div>
+                <div style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--brand-primary)", margin: "var(--space-1) 0" }}>
+                  {isLoadingMetrics ? "..." : vitals.length > 0 ? `${vitals[0].value} ${vitals[0].unit || ""}` : "None"}
+                </div>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+                  {vitals.length > 0 ? vitals[0].vital_type.replace("_", " ") : "Log physiological vitals"}
+                </div>
+              </Link>
+
+              <Link href="/medications" className="card card-interactive" style={{ textDecoration: "none" }}>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-dim)", textTransform: "uppercase" }}>
+                  Active Prescriptions
+                </div>
+                <div style={{ fontSize: "2rem", fontWeight: 700, color: "var(--status-success)", margin: "var(--space-1) 0" }}>
+                  {isLoadingMetrics ? "..." : activeMedications.length}
+                </div>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+                  {activeMedications.length > 0 ? `${activeMedications[0].name}` : "No active prescriptions"}
+                </div>
+              </Link>
+
+              <Link href="/reminders" className="card card-interactive" style={{ textDecoration: "none" }}>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-dim)", textTransform: "uppercase" }}>
+                  Active Reminders
+                </div>
+                <div style={{ fontSize: "2rem", fontWeight: 700, color: "var(--status-urgent)", margin: "var(--space-1) 0" }}>
+                  {isLoadingMetrics ? "..." : activeReminders.length}
+                </div>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+                  {activeReminders.length > 0 ? `Next alert: ${activeReminders[0].reminder_time}` : "No scheduled alerts"}
+                </div>
+              </Link>
+            </div>
+          </div>
+
           {/* Patient Demographics Card */}
           <div className="card">
             <h3 style={{ marginBottom: "var(--space-3)", color: "var(--brand-primary)" }}>
@@ -143,6 +234,16 @@ export default function DashboardPage() {
                 </h4>
                 <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
                   Track active prescriptions and schedule automated reminder notifications.
+                </p>
+              </Link>
+
+              <Link href="/consents" className="card card-interactive" style={{ textDecoration: "none" }}>
+                <div style={{ fontSize: "1.8rem", marginBottom: "var(--space-2)" }}>🛡️</div>
+                <h4 style={{ color: "var(--brand-primary)", marginBottom: "var(--space-1)" }}>
+                  Consent Center
+                </h4>
+                <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+                  Review and manage granular privacy and AI processing authorizations.
                 </p>
               </Link>
 
