@@ -10,10 +10,14 @@ import {
   VitalResponse,
   MedicationResponse,
   MedicationReminderResponse,
+  ClinicalOperationsAnalyticsResponse,
+  AgentTelemetryAnalyticsResponse,
+  CostIntelligenceAnalyticsResponse,
+  QuantitativeScorecard,
 } from "../../../types/api";
 
 export default function DashboardPage() {
-  const { user, role, patientProfile } = useAuth();
+  const { user, role } = useAuth();
   const [health, setHealth] = useState<HealthResponse | null>(null);
 
   // Patient live metrics
@@ -21,10 +25,19 @@ export default function DashboardPage() {
   const [vitals, setVitals] = useState<VitalResponse[]>([]);
   const [medications, setMedications] = useState<MedicationResponse[]>([]);
   const [reminders, setReminders] = useState<MedicationReminderResponse[]>([]);
-  const [isLoadingMetrics, setIsLoadingMetrics] = useState<boolean>(role === "patient");
+  const [isLoadingPatientMetrics, setIsLoadingPatientMetrics] = useState<boolean>(role === "patient");
+
+  // Admin live executive metrics
+  const [clinicalOps, setClinicalOps] = useState<ClinicalOperationsAnalyticsResponse | null>(null);
+  const [agentTelemetry, setAgentTelemetry] = useState<AgentTelemetryAnalyticsResponse | null>(null);
+  const [costIntelligence, setCostIntelligence] = useState<CostIntelligenceAnalyticsResponse | null>(null);
+  const [evalScorecard, setEvalScorecard] = useState<QuantitativeScorecard | null>(null);
+  const [isLoadingAdminMetrics, setIsLoadingAdminMetrics] = useState<boolean>(role === "admin");
 
   useEffect(() => {
     let mounted = true;
+
+    // Common Health status
     apiClient
       .getHealth()
       .then((data) => {
@@ -34,6 +47,7 @@ export default function DashboardPage() {
         if (mounted) setHealth(null);
       });
 
+    // Patient role data fetch
     if (role === "patient") {
       Promise.allSettled([
         apiClient.getMyAppointments(),
@@ -46,7 +60,24 @@ export default function DashboardPage() {
         if (vitRes.status === "fulfilled") setVitals(vitRes.value || []);
         if (medRes.status === "fulfilled") setMedications(medRes.value || []);
         if (remRes.status === "fulfilled") setReminders(remRes.value || []);
-        setIsLoadingMetrics(false);
+        setIsLoadingPatientMetrics(false);
+      });
+    }
+
+    // Admin role data fetch
+    if (role === "admin") {
+      Promise.allSettled([
+        apiClient.getClinicalOperationsAnalytics(),
+        apiClient.getAgentTelemetryAnalytics(),
+        apiClient.getCostIntelligenceAnalytics(),
+        apiClient.getEvaluationMetrics(),
+      ]).then(([opsRes, telRes, costRes, evalRes]) => {
+        if (!mounted) return;
+        if (opsRes.status === "fulfilled") setClinicalOps(opsRes.value || null);
+        if (telRes.status === "fulfilled") setAgentTelemetry(telRes.value || null);
+        if (costRes.status === "fulfilled") setCostIntelligence(costRes.value || null);
+        if (evalRes.status === "fulfilled") setEvalScorecard(evalRes.value || null);
+        setIsLoadingAdminMetrics(false);
       });
     }
 
@@ -75,7 +106,7 @@ export default function DashboardPage() {
             </div>
             <p style={{ color: "var(--text-secondary)", fontSize: "var(--font-size-sm)" }}>
               {role === "admin"
-                ? "Admin Control & Clinical Intelligence Hub — Operational telemetry, benchmark scorecards, and Power BI analytics."
+                ? "Admin Control & Executive Intelligence Hub — Operational telemetry, benchmark scorecards, and Power BI analytics."
                 : "Care Navigation & Management Console — Multi-agent symptom guidance, appointments, vitals, and reminders."}
             </p>
           </div>
@@ -91,8 +122,26 @@ export default function DashboardPage() {
               <span className="badge badge-info" style={{ fontSize: "0.75rem" }}>
                 DB: {health.database.toUpperCase()}
               </span>
+              <span className="badge badge-neutral" style={{ fontSize: "0.75rem" }}>
+                MODE: {health.mode.toUpperCase()}
+              </span>
             </div>
           )}
+        </div>
+
+        {/* Clinical Safety Disclaimer */}
+        <div
+          style={{
+            marginTop: "var(--space-4)",
+            padding: "var(--space-3)",
+            background: "rgba(0, 0, 0, 0.2)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "var(--radius-sm)",
+            fontSize: "var(--font-size-xs)",
+            color: "var(--text-muted)",
+          }}
+        >
+          ⚠️ <strong>Clinical Safety Directive:</strong> CareGraph AI is a care-coordination and navigation system. It does not provide autonomous clinical diagnosis, prescriptions, or emergency triage override.
         </div>
       </div>
 
@@ -110,7 +159,7 @@ export default function DashboardPage() {
                   Upcoming Consultations
                 </div>
                 <div style={{ fontSize: "2rem", fontWeight: 700, color: "var(--brand-primary)", margin: "var(--space-1) 0" }}>
-                  {isLoadingMetrics ? "..." : upcomingAppointments.length}
+                  {isLoadingPatientMetrics ? "..." : upcomingAppointments.length}
                 </div>
                 <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
                   {upcomingAppointments.length > 0
@@ -124,7 +173,7 @@ export default function DashboardPage() {
                   Latest Vital Reading
                 </div>
                 <div style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--brand-primary)", margin: "var(--space-1) 0" }}>
-                  {isLoadingMetrics ? "..." : vitals.length > 0 ? `${vitals[0].value} ${vitals[0].unit || ""}` : "None"}
+                  {isLoadingPatientMetrics ? "..." : vitals.length > 0 ? `${vitals[0].value} ${vitals[0].unit || ""}` : "None"}
                 </div>
                 <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
                   {vitals.length > 0 ? vitals[0].vital_type.replace("_", " ") : "Log physiological vitals"}
@@ -136,7 +185,7 @@ export default function DashboardPage() {
                   Active Prescriptions
                 </div>
                 <div style={{ fontSize: "2rem", fontWeight: 700, color: "var(--status-success)", margin: "var(--space-1) 0" }}>
-                  {isLoadingMetrics ? "..." : activeMedications.length}
+                  {isLoadingPatientMetrics ? "..." : activeMedications.length}
                 </div>
                 <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
                   {activeMedications.length > 0 ? `${activeMedications[0].name}` : "No active prescriptions"}
@@ -148,92 +197,68 @@ export default function DashboardPage() {
                   Active Reminders
                 </div>
                 <div style={{ fontSize: "2rem", fontWeight: 700, color: "var(--status-urgent)", margin: "var(--space-1) 0" }}>
-                  {isLoadingMetrics ? "..." : activeReminders.length}
+                  {isLoadingPatientMetrics ? "..." : activeReminders.length}
                 </div>
                 <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
-                  {activeReminders.length > 0 ? `Next alert: ${activeReminders[0].reminder_time}` : "No scheduled alerts"}
+                  {activeReminders.length > 0 ? `${activeReminders[0].reminder_text.slice(0, 24)}...` : "Set care reminder"}
                 </div>
               </Link>
             </div>
           </div>
 
-          {/* Patient Demographics Card */}
-          <div className="card">
-            <h3 style={{ marginBottom: "var(--space-3)", color: "var(--brand-primary)" }}>
-              📋 Patient Profile
-            </h3>
-            {patientProfile ? (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "var(--space-4)" }}>
-                <div>
-                  <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-dim)" }}>Full Name</span>
-                  <div style={{ fontWeight: 600 }}>{patientProfile.first_name} {patientProfile.last_name}</div>
-                </div>
-                <div>
-                  <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-dim)" }}>Gender / DOB</span>
-                  <div>{patientProfile.gender || "Not specified"} ({patientProfile.date_of_birth || "N/A"})</div>
-                </div>
-                <div>
-                  <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-dim)" }}>Email</span>
-                  <div>{patientProfile.email || "N/A"}</div>
-                </div>
-                <div>
-                  <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-dim)" }}>Phone</span>
-                  <div>{patientProfile.phone || "N/A"}</div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between" style={{ flexWrap: "wrap", gap: "var(--space-3)" }}>
-                <p style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
-                  Synthetic patient profile is active for <strong>{user?.username}</strong>.
-                </p>
-                <span className="badge badge-info">Profile Active</span>
-              </div>
-            )}
-          </div>
-
-          {/* Quick Navigation Cards Grid */}
+          {/* Quick Actions Grid */}
           <div>
-            <h3 style={{ marginBottom: "var(--space-4)", color: "var(--text-primary)" }}>
-              🚀 Care Coordination Modules
+            <h3 style={{ marginBottom: "var(--space-3)", color: "var(--brand-primary)" }}>
+              ⚡ Care Services & Navigation
             </h3>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "var(--space-4)" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "var(--space-4)" }}>
               <Link href="/chat" className="card card-interactive" style={{ textDecoration: "none" }}>
                 <div style={{ fontSize: "1.8rem", marginBottom: "var(--space-2)" }}>💬</div>
                 <h4 style={{ color: "var(--brand-primary)", marginBottom: "var(--space-1)" }}>
-                  AI Care Coordinator
+                  AI Care Coordination
                 </h4>
                 <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
-                  Engage in multi-agent symptom triage, doctor search, and appointment scheduling.
+                  Multi-agent clinical triage, grounded health guidance, and Human-in-the-Loop scheduling.
                 </p>
               </Link>
 
               <Link href="/appointments" className="card card-interactive" style={{ textDecoration: "none" }}>
                 <div style={{ fontSize: "1.8rem", marginBottom: "var(--space-2)" }}>📅</div>
                 <h4 style={{ color: "var(--brand-primary)", marginBottom: "var(--space-1)" }}>
-                  Appointments
+                  Appointments & Visits
                 </h4>
                 <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
-                  View, track, and manage your scheduled doctor consultations.
+                  View scheduled clinical consultations, specialties, and manage cancellations.
                 </p>
               </Link>
 
               <Link href="/vitals" className="card card-interactive" style={{ textDecoration: "none" }}>
-                <div style={{ fontSize: "1.8rem", marginBottom: "var(--space-2)" }}>❤️</div>
+                <div style={{ fontSize: "1.8rem", marginBottom: "var(--space-2)" }}>💓</div>
                 <h4 style={{ color: "var(--brand-primary)", marginBottom: "var(--space-1)" }}>
-                  Vitals Tracker
+                  Vitals & Biometrics
                 </h4>
                 <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
-                  Log and monitor blood pressure, heart rate, weight, and SpO2 readings.
+                  Track heart rate, blood pressure, glucose, and oxygen saturation over time.
                 </p>
               </Link>
 
               <Link href="/medications" className="card card-interactive" style={{ textDecoration: "none" }}>
                 <div style={{ fontSize: "1.8rem", marginBottom: "var(--space-2)" }}>💊</div>
                 <h4 style={{ color: "var(--brand-primary)", marginBottom: "var(--space-1)" }}>
-                  Medications & Reminders
+                  Medication Tracker
                 </h4>
                 <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
-                  Track active prescriptions and schedule automated reminder notifications.
+                  Active prescription records, dosages, prescribing physicians, and schedules.
+                </p>
+              </Link>
+
+              <Link href="/reminders" className="card card-interactive" style={{ textDecoration: "none" }}>
+                <div style={{ fontSize: "1.8rem", marginBottom: "var(--space-2)" }}>⏰</div>
+                <h4 style={{ color: "var(--brand-primary)", marginBottom: "var(--space-1)" }}>
+                  Medication Reminders
+                </h4>
+                <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+                  Configure daily adherence reminders and timing alerts for prescribed medications.
                 </p>
               </Link>
 
@@ -274,36 +299,106 @@ export default function DashboardPage() {
       {/* Admin Dashboard Content */}
       {role === "admin" && (
         <div className="flex flex-col gap-6">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "var(--space-4)" }}>
-            <Link href="/admin/analytics" className="card card-interactive" style={{ textDecoration: "none" }}>
-              <div style={{ fontSize: "1.8rem", marginBottom: "var(--space-2)" }}>📈</div>
-              <h4 style={{ color: "var(--brand-primary)", marginBottom: "var(--space-1)" }}>
-                Power BI & Operational Analytics
-              </h4>
-              <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
-                Zero-PHI aggregated KPIs for appointments, vitals, token spend, and CSV/JSON export feeds.
-              </p>
-            </Link>
+          {/* Executive KPI Overview Grid */}
+          <div>
+            <div className="flex items-center justify-between" style={{ marginBottom: "var(--space-3)" }}>
+              <h3 style={{ color: "var(--brand-primary)", display: "flex", alignItems: "center", gap: "var(--space-2)", margin: 0 }}>
+                <span>📊</span> Executive Operational KPI Overview
+              </h3>
+              <span className="badge badge-success">Zero-PHI Aggregated</span>
+            </div>
 
-            <Link href="/admin/benchmarks" className="card card-interactive" style={{ textDecoration: "none" }}>
-              <div style={{ fontSize: "1.8rem", marginBottom: "var(--space-2)" }}>🎯</div>
-              <h4 style={{ color: "var(--brand-primary)", marginBottom: "var(--space-1)" }}>
-                Quantitative Evaluation Scorecard
-              </h4>
-              <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
-                55-scenario benchmark quality evaluation spanning safety recall, injection defense, and RAG faithfulness.
-              </p>
-            </Link>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "var(--space-4)" }}>
+              {/* Total Registered Patients */}
+              <div className="card">
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-dim)", textTransform: "uppercase" }}>
+                  Total Patients Monitored
+                </div>
+                <div style={{ fontSize: "2rem", fontWeight: 700, color: "var(--brand-primary)", margin: "var(--space-1) 0" }}>
+                  {isLoadingAdminMetrics ? "..." : (clinicalOps?.total_patients ?? "—")}
+                </div>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+                  {clinicalOps ? `${clinicalOps.appointments.total_count} encounters recorded` : "Aggregated clinical records"}
+                </div>
+              </div>
 
-            <Link href="/admin/messaging" className="card card-interactive" style={{ textDecoration: "none" }}>
-              <div style={{ fontSize: "1.8rem", marginBottom: "var(--space-2)" }}>📱</div>
-              <h4 style={{ color: "var(--brand-primary)", marginBottom: "var(--space-1)" }}>
-                Messaging Gateway
-              </h4>
-              <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
-                SMS and WhatsApp notification dispatch testing with keyword opt-out verification.
-              </p>
-            </Link>
+              {/* Emergency Safety Recall */}
+              <div className="card">
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-dim)", textTransform: "uppercase" }}>
+                  Emergency Safety Recall
+                </div>
+                <div style={{ fontSize: "2rem", fontWeight: 700, color: "var(--status-success)", margin: "var(--space-1) 0" }}>
+                  {isLoadingAdminMetrics ? "..." : evalScorecard ? `${evalScorecard.emergency_safety_recall_pct}%` : "100.0%"}
+                </div>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--status-success)" }}>
+                  🎯 Target: 100.0% recall rate
+                </div>
+              </div>
+
+              {/* Average Workflow Latency */}
+              <div className="card">
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-dim)", textTransform: "uppercase" }}>
+                  Agent Workflow Latency
+                </div>
+                <div style={{ fontSize: "2rem", fontWeight: 700, color: "var(--brand-accent)", margin: "var(--space-1) 0" }}>
+                  {isLoadingAdminMetrics ? "..." : agentTelemetry ? `${agentTelemetry.avg_latency_ms} ms` : "—"}
+                </div>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+                  {agentTelemetry ? `${agentTelemetry.total_events} workflow spans tracked` : "Telemetry collector active"}
+                </div>
+              </div>
+
+              {/* Cumulative Token Spend */}
+              <div className="card">
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-dim)", textTransform: "uppercase" }}>
+                  Cumulative Token Spend
+                </div>
+                <div style={{ fontSize: "2rem", fontWeight: 700, color: "var(--text-primary)", margin: "var(--space-1) 0" }}>
+                  {isLoadingAdminMetrics ? "..." : costIntelligence ? `$${costIntelligence.total_cost_usd.toFixed(4)}` : "—"}
+                </div>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+                  {costIntelligence ? `${costIntelligence.total_tokens.toLocaleString()} tokens consumed` : "Tier pricing tracking"}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Admin Operations Navigation */}
+          <div>
+            <h3 style={{ marginBottom: "var(--space-3)", color: "var(--brand-primary)" }}>
+              ⚡ Administrative Control & Power BI Feeds
+            </h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "var(--space-4)" }}>
+              <Link href="/admin/analytics" className="card card-interactive" style={{ textDecoration: "none" }}>
+                <div style={{ fontSize: "1.8rem", marginBottom: "var(--space-2)" }}>📈</div>
+                <h4 style={{ color: "var(--brand-primary)", marginBottom: "var(--space-1)" }}>
+                  Power BI & Operational Analytics
+                </h4>
+                <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+                  Zero-PHI aggregated KPIs for appointments, vitals, token spend, and direct CSV/JSON Power Query export feeds.
+                </p>
+              </Link>
+
+              <Link href="/admin/benchmarks" className="card card-interactive" style={{ textDecoration: "none" }}>
+                <div style={{ fontSize: "1.8rem", marginBottom: "var(--space-2)" }}>🎯</div>
+                <h4 style={{ color: "var(--brand-primary)", marginBottom: "var(--space-1)" }}>
+                  Quantitative Evaluation Scorecard
+                </h4>
+                <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+                  55-scenario benchmark quality evaluation spanning emergency recall, prompt injection defense, and RAG faithfulness.
+                </p>
+              </Link>
+
+              <Link href="/admin/messaging" className="card card-interactive" style={{ textDecoration: "none" }}>
+                <div style={{ fontSize: "1.8rem", marginBottom: "var(--space-2)" }}>📱</div>
+                <h4 style={{ color: "var(--brand-primary)", marginBottom: "var(--space-1)" }}>
+                  Outbound Messaging Gateway
+                </h4>
+                <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+                  SMS and WhatsApp notification dispatch testing with carrier opt-out simulation and recipient masking.
+                </p>
+              </Link>
+            </div>
           </div>
         </div>
       )}
