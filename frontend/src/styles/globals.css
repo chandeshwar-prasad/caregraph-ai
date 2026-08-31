@@ -687,3 +687,73 @@ p {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* Multi-Modal: Voice Navigation & Synthesis Styles */
+.record-btn-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-lg);
+  border: 1px dashed var(--border-default);
+}
+
+.record-btn {
+  width: 80px;
+  height: 80px;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--brand-primary);
+  background: rgba(88, 166, 255, 0.1);
+  color: var(--brand-primary);
+  font-size: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.record-btn:hover {
+  background: rgba(88, 166, 255, 0.2);
+  transform: scale(1.05);
+}
+
+.record-btn.recording {
+  border-color: var(--status-emergency);
+  background: rgba(248, 81, 73, 0.2);
+  color: var(--status-emergency);
+  animation: pulseRecording 1.5s infinite;
+}
+
+@keyframes pulseRecording {
+  0% {
+    box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.6);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 14px rgba(248, 81, 73, 0);
+    transform: scale(1.08);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(248, 81, 73, 0);
+    transform: scale(1);
+  }
+}
+
+.audio-player-wrapper {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.audio-player-wrapper audio {
+  width: 100%;
+  border-radius: var(--radius-sm);
+  outline: none;
+}
