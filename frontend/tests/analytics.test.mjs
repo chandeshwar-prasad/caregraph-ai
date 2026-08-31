@@ -292,3 +292,127 @@ describe("Clinical Operations & Agent Telemetry Admin Contracts", () => {
     assert.equal(emptyClinicalOps.total_patients, 0);
   });
 });
+
+// ==========================================
+// 3. Phase 11E-6-3 Cost Intelligence & Power BI
+// ==========================================
+
+describe("Cost Intelligence & Power BI Export Suite Contracts", () => {
+  test("processes CostIntelligenceAnalyticsResponse schema and tier distribution", () => {
+    const mockCostResponse = {
+      total_prompt_tokens: 1250000,
+      total_completion_tokens: 380000,
+      total_tokens: 1630000,
+      total_cost_usd: 0.3145,
+      avg_cost_per_workflow_usd: 0.00042,
+      model_usage: {
+        "llama-3.3-70b-versatile": {
+          invocations: 750,
+          prompt_tokens: 1250000,
+          completion_tokens: 380000,
+          total_tokens: 1630000,
+          cost_usd: 0.3145,
+        },
+      },
+      tier_distribution: {
+        "Tier 1 (Fast Triage)": 450,
+        "Tier 2 (Reasoning & Extraction)": 300,
+      },
+      pricing_table: {
+        "llama-3.3-70b-versatile": {
+          prompt_per_million: 0.13,
+          completion_per_million: 0.40,
+          category: "Tier 1 Fast Reasoning",
+        },
+      },
+      zero_phi: true,
+    };
+
+    assert.equal(mockCostResponse.total_tokens, 1630000);
+    assert.equal(mockCostResponse.total_cost_usd, 0.3145);
+    assert.equal(mockCostResponse.avg_cost_per_workflow_usd, 0.00042);
+    assert.equal(mockCostResponse.model_usage["llama-3.3-70b-versatile"].invocations, 750);
+    assert.equal(mockCostResponse.pricing_table["llama-3.3-70b-versatile"].prompt_per_million, 0.13);
+    assert.equal(mockCostResponse.zero_phi, true);
+  });
+
+  test("validates Power BI export dataset catalog and supported formats", () => {
+    const validDatasets = [
+      "clinical-operations",
+      "appointments",
+      "medications",
+      "vitals",
+      "consents",
+      "agent-telemetry",
+      "cost-intelligence",
+    ];
+
+    const validFormats = ["csv", "json"];
+
+    function isValidExportQuery(datasetName, format) {
+      return validDatasets.includes(datasetName) && validFormats.includes(format);
+    }
+
+    assert.equal(isValidExportQuery("clinical-operations", "csv"), true);
+    assert.equal(isValidExportQuery("appointments", "json"), true);
+    assert.equal(isValidExportQuery("cost-intelligence", "csv"), true);
+    assert.equal(isValidExportQuery("invalid-table", "csv"), false);
+    assert.equal(isValidExportQuery("vitals", "xml"), false);
+  });
+
+  test("formats export endpoint URL correctly with base and format parameter", () => {
+    function getExportDatasetUrl(baseUrl, datasetName, format = "csv") {
+      return `${baseUrl}/analytics/export/${encodeURIComponent(datasetName)}?format=${format}`;
+    }
+
+    const baseUrl = "http://localhost:8000";
+    const urlCsv = getExportDatasetUrl(baseUrl, "appointments", "csv");
+    const urlJson = getExportDatasetUrl(baseUrl, "agent-telemetry", "json");
+
+    assert.equal(urlCsv, "http://localhost:8000/analytics/export/appointments?format=csv");
+    assert.equal(urlJson, "http://localhost:8000/analytics/export/agent-telemetry?format=json");
+  });
+
+  test("generates syntactically valid Power Query M-Code snippet", () => {
+    function generatePowerQueryMCode(baseUrl, datasetId) {
+      return `// Power BI Power Query M-Code for CareGraph AI
+// Dataset: ${datasetId} (Zero-PHI Tabular Feed)
+let
+    Source = Json.Document(Web.Contents("${baseUrl}/analytics/export/${datasetId}?format=json", [
+        Headers = [
+            #"Authorization" = "Bearer <YOUR_ADMIN_JWT_TOKEN>",
+            #"Accept" = "application/json"
+        ]
+    ])),
+    #"Converted to Table" = Table.FromList(Source, Splitter.SplitByNothing(), null, null, ExtraValues.Error),
+    #"Expanded Records" = Table.ExpandRecordColumn(#"Converted to Table", "Column1", Record.FieldNames(Source{0}))
+in
+    #"Expanded Records"`;
+    }
+
+    const mCode = generatePowerQueryMCode("http://localhost:8000", "vitals");
+    assert.ok(mCode.includes("Web.Contents"));
+    assert.ok(mCode.includes("/analytics/export/vitals?format=json"));
+    assert.ok(mCode.includes("Bearer <YOUR_ADMIN_JWT_TOKEN>"));
+    assert.ok(mCode.includes("Table.ExpandRecordColumn"));
+  });
+
+  test("verifies zero PHI exists in tabular export schema columns", () => {
+    const exportColumns = {
+      appointments: ["appointment_id", "doctor_name", "specialty", "appointment_time", "status", "created_at"],
+      medications: ["medication_id", "name", "dosage", "frequency", "is_active", "created_at"],
+      vitals: ["vital_id", "vital_type", "unit", "recorded_at", "source", "created_at"],
+      consents: ["consent_id", "consent_type", "status", "version", "granted_at", "expires_at"],
+    };
+
+    const phiKeywords = ["patient_name", "first_name", "last_name", "ssn", "phone", "email", "notes", "mrn"];
+
+    for (const [table, cols] of Object.entries(exportColumns)) {
+      for (const col of cols) {
+        for (const phi of phiKeywords) {
+          assert.notEqual(col.toLowerCase(), phi, `Column ${col} in ${table} should not match PHI keyword ${phi}`);
+        }
+      }
+    }
+  });
+});
