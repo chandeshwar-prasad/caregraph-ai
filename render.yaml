@@ -7,7 +7,7 @@ version: "1"
 databases:
   - name: caregraph-db
     databaseName: caregraph
-    user: postgres
+    user: caregraph
     plan: free
     region: oregon
     postgresMajorVersion: "16"
