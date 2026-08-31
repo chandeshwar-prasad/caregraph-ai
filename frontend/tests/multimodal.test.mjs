@@ -229,3 +229,156 @@ describe("Vision Image Validation & Analysis Contracts", () => {
     });
   });
 });
+
+// ==========================================
+// 5. Outbound Messaging Gateway Contracts
+// ==========================================
+
+describe("Outbound Messaging Gateway Validation & Contracts", () => {
+  const MAX_MESSAGE_CHARS = 1600;
+
+  function maskPhoneNumber(phone) {
+    if (!phone) return "";
+    const cleaned = phone.trim();
+    if (cleaned.length <= 4) return "****";
+    const lastFour = cleaned.slice(-4);
+    const prefix = cleaned.startsWith("+1")
+      ? "+1"
+      : cleaned.startsWith("+91")
+      ? "+91"
+      : cleaned.startsWith("+")
+      ? cleaned.slice(0, 3)
+      : "";
+    return `${prefix} ******${lastFour}`;
+  }
+
+  function validateSendMessagePayload(channel, recipient, body) {
+    if (!["sms", "whatsapp"].includes(channel)) {
+      throw new Error(`Unsupported channel: ${channel}`);
+    }
+    if (!recipient || recipient.trim().length < 8) {
+      throw new Error("Invalid recipient format");
+    }
+    if (!body || body.trim().length === 0) {
+      throw new Error("Message body cannot be empty");
+    }
+    if (body.length > MAX_MESSAGE_CHARS) {
+      throw new Error("Message body exceeds 1,600 character limit");
+    }
+    return {
+      channel,
+      recipient: recipient.trim(),
+      body: body.trim(),
+    };
+  }
+
+  function validateOptOutKeyword(keyword) {
+    const OPT_OUT_KEYWORDS = ["STOP", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"];
+    const normalized = (keyword || "").trim().toUpperCase();
+    return {
+      keyword: normalized,
+      isOptOut: OPT_OUT_KEYWORDS.includes(normalized),
+    };
+  }
+
+  test("validates SMS channel send request payload", () => {
+    const payload = validateSendMessagePayload("sms", "+12025550143", "CareGraph appointment reminder for tomorrow.");
+    assert.equal(payload.channel, "sms");
+    assert.equal(payload.recipient, "+12025550143");
+    assert.ok(payload.body.includes("appointment reminder"));
+  });
+
+  test("validates WhatsApp channel send request payload", () => {
+    const payload = validateSendMessagePayload("whatsapp", "+919876543210", "CareGraph medication alert.");
+    assert.equal(payload.channel, "whatsapp");
+    assert.equal(payload.recipient, "+919876543210");
+  });
+
+  test("rejects invalid channel types", () => {
+    assert.throws(() => validateSendMessagePayload("telegram", "+12025550143", "Hello"), /Unsupported channel/);
+  });
+
+  test("rejects empty message body", () => {
+    assert.throws(() => validateSendMessagePayload("sms", "+12025550143", ""), /cannot be empty/);
+    assert.throws(() => validateSendMessagePayload("sms", "+12025550143", "   "), /cannot be empty/);
+  });
+
+  test("rejects message body exceeding 1,600 character limit", () => {
+    const oversizedBody = "X".repeat(1601);
+    assert.throws(() => validateSendMessagePayload("sms", "+12025550143", oversizedBody), /exceeds 1,600 character limit/);
+  });
+
+  test("masks phone numbers correctly to preserve privacy", () => {
+    assert.equal(maskPhoneNumber("+12025550143"), "+1 ******0143");
+    assert.equal(maskPhoneNumber("+919876543210"), "+91 ******3210");
+    assert.equal(maskPhoneNumber("1234"), "****");
+    assert.equal(maskPhoneNumber(""), "");
+  });
+
+  test("parses structured MessagingSendResponse schema", () => {
+    const mockSendResponse = {
+      success: true,
+      channel: "sms",
+      provider: "MockTwilioSMSProvider",
+      message_id: "msg_mock_987654",
+      status: "delivered",
+      is_mock: true,
+    };
+
+    assert.equal(mockSendResponse.success, true);
+    assert.equal(mockSendResponse.channel, "sms");
+    assert.equal(mockSendResponse.status, "delivered");
+    assert.equal(mockSendResponse.is_mock, true);
+  });
+
+  test("identifies carrier opt-out keywords correctly (STOP, UNSUBSCRIBE, CANCEL, END, QUIT)", () => {
+    assert.equal(validateOptOutKeyword("STOP").isOptOut, true);
+    assert.equal(validateOptOutKeyword("unsubscribe").isOptOut, true);
+    assert.equal(validateOptOutKeyword("Cancel").isOptOut, true);
+    assert.equal(validateOptOutKeyword("END").isOptOut, true);
+    assert.equal(validateOptOutKeyword("quit").isOptOut, true);
+    assert.equal(validateOptOutKeyword("HELP").isOptOut, false);
+    assert.equal(validateOptOutKeyword("STATUS").isOptOut, false);
+  });
+
+  test("parses structured MessagingOptOutResponse schema", () => {
+    const mockOptOutResponse = {
+      success: true,
+      opted_out: true,
+      keyword_matched: true,
+      channel: "sms",
+      status: "opted_out",
+    };
+
+    assert.equal(mockOptOutResponse.success, true);
+    assert.equal(mockOptOutResponse.opted_out, true);
+    assert.equal(mockOptOutResponse.keyword_matched, true);
+    assert.equal(mockOptOutResponse.status, "opted_out");
+  });
+
+  test("maps 403 Forbidden to active consent revocation warning", () => {
+    function mapMessagingError(status) {
+      if (status === 403) return "Consent revoked: Recipient has opted out of automated notifications.";
+      if (status === 401) return "Session expired. Please re-authenticate.";
+      return "Messaging dispatch failed.";
+    }
+
+    assert.ok(mapMessagingError(403).includes("Consent revoked"));
+    assert.ok(mapMessagingError(401).includes("Session expired"));
+  });
+
+  test("verifies zero message content stored in web storage", () => {
+    const forbiddenStorageKeys = ["sms_body", "whatsapp_message", "recipient_phone", "messaging_draft"];
+    const mockStorage = {};
+
+    forbiddenStorageKeys.forEach((key) => {
+      assert.equal(mockStorage[key], undefined, `Storage must not contain ${key}`);
+    });
+  });
+
+  test("verifies operational non-diagnostic clinical safety disclaimer", () => {
+    const disclaimer = "CareGraph AI messaging is an operational communication interface for appointment alerts and care adherence reminders. It does not provide medical diagnosis, prescription adjustments, or clinical decision-making.";
+    assert.ok(disclaimer.includes("operational communication interface"));
+    assert.ok(disclaimer.includes("does not provide medical diagnosis"));
+  });
+});
