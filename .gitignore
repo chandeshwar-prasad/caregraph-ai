@@ -13,3 +13,17 @@ test.db
 secrets/
 .vscode/
 
+# Next.js and Frontend exclusions
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.env.local
+frontend/.env.*.local
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/*.tsbuildinfo
+*.tsbuildinfo
+node_modules/
+.next/
