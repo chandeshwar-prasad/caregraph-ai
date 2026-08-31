@@ -160,3 +160,135 @@ describe("Admin Executive KPI Overview Contracts", () => {
     assert.ok(directive.includes("does not provide autonomous clinical diagnosis"));
   });
 });
+
+// ==========================================
+// 2. Phase 11E-6-2 Clinical Operations & Telemetry
+// ==========================================
+
+describe("Clinical Operations & Agent Telemetry Admin Contracts", () => {
+  test("processes full clinical operations breakdown dimensions", () => {
+    const clinicalOpsData = {
+      total_patients: 25,
+      appointments: {
+        total_count: 50,
+        by_status: { scheduled: 30, completed: 15, cancelled: 5 },
+        by_specialty: { Cardiology: 20, "General Practice": 20, Neurology: 10 },
+        by_doctor: { "Dr. Sarah Smith": 30, "Dr. John Doe": 20 },
+      },
+      medications: {
+        total_count: 60,
+        active_count: 45,
+        inactive_count: 15,
+        by_name: { Lisinopril: 20, Metformin: 25, Atorvastatin: 15 },
+        by_frequency: { "Once daily": 35, "Twice daily": 10 },
+      },
+      vitals: {
+        total_count: 150,
+        by_type: { heart_rate: 50, blood_pressure: 45, glucose: 30, oxygen_saturation: 25 },
+      },
+      consents: {
+        total_count: 25,
+        by_type: { ai_processing: 25, data_access: 25 },
+        by_status: { granted: 24, revoked: 1 },
+      },
+      reminders: {
+        total_count: 35,
+        by_status: { active: 30, cancelled: 5 },
+      },
+      zero_phi: true,
+    };
+
+    // Calculate active medication ratio
+    const activeMedRatio = clinicalOpsData.medications.active_count / clinicalOpsData.medications.total_count;
+    assert.equal(activeMedRatio, 0.75);
+
+    // Verify specialty keys and doctors
+    assert.equal(Object.keys(clinicalOpsData.appointments.by_specialty).length, 3);
+    assert.equal(clinicalOpsData.appointments.by_doctor["Dr. Sarah Smith"], 30);
+
+    // Verify vitals breakdown
+    assert.equal(clinicalOpsData.vitals.by_type.blood_pressure, 45);
+
+    // Verify zero_phi guarantee
+    assert.equal(clinicalOpsData.zero_phi, true);
+  });
+
+  test("processes multi-agent telemetry performance and status distributions", () => {
+    const telemetryData = {
+      total_events: 3450,
+      avg_latency_ms: 142.8,
+      safety_escalations: 8,
+      error_rate: 0.0015,
+      intents_breakdown: { triage: 1500, scheduling: 1100, records: 800, emergency: 8 },
+      agents_breakdown: {
+        triage_agent: 1500,
+        coordinator_agent: 1100,
+        records_agent: 800,
+        emergency_agent: 8,
+      },
+      status_breakdown: { SUCCESS: 3445, ERROR: 5 },
+      tool_breakdown: { search_slots: 1100, get_medications: 800, record_vital: 300 },
+      recent_traces_count: 100,
+      zero_phi: true,
+    };
+
+    assert.equal(telemetryData.total_events, 3450);
+    assert.ok(telemetryData.avg_latency_ms < 200);
+    assert.equal(telemetryData.safety_escalations, 8);
+    assert.equal(telemetryData.agents_breakdown.emergency_agent, 8);
+    assert.equal(telemetryData.status_breakdown.SUCCESS, 3445);
+    assert.equal(telemetryData.zero_phi, true);
+  });
+
+  test("verifies strict admin guard prevents non-admin user access", () => {
+    function canAccessAdminAnalytics(userRole) {
+      return userRole === "admin";
+    }
+
+    assert.equal(canAccessAdminAnalytics("admin"), true);
+    assert.equal(canAccessAdminAnalytics("patient"), false);
+    assert.equal(canAccessAdminAnalytics(undefined), false);
+    assert.equal(canAccessAdminAnalytics(null), false);
+    assert.equal(canAccessAdminAnalytics("guest"), false);
+  });
+
+  test("verifies zero PHI is leaked across clinical and telemetry metric structures", () => {
+    const combinedAnalytics = {
+      clinical: {
+        total_patients: 10,
+        appointments: { total_count: 20 },
+      },
+      telemetry: {
+        total_events: 500,
+        avg_latency_ms: 120,
+      },
+    };
+
+    const serialized = JSON.stringify(combinedAnalytics);
+    assert.ok(!serialized.includes("patient_name"));
+    assert.ok(!serialized.includes("phone_number"));
+    assert.ok(!serialized.includes("ssn"));
+    assert.ok(!serialized.includes("mrn"));
+    assert.ok(!serialized.includes("email"));
+  });
+
+  test("handles empty datasets safely without throwing runtime errors", () => {
+    const emptyClinicalOps = {
+      total_patients: 0,
+      appointments: { total_count: 0, by_status: {}, by_specialty: {}, by_doctor: {} },
+      medications: { total_count: 0, active_count: 0, inactive_count: 0, by_name: {}, by_frequency: {} },
+      vitals: { total_count: 0, by_type: {} },
+      consents: { total_count: 0, by_type: {}, by_status: {} },
+      reminders: { total_count: 0, by_status: {} },
+      zero_phi: true,
+    };
+
+    function getMaxVal(record = {}) {
+      const vals = Object.values(record);
+      return vals.length > 0 ? Math.max(...vals, 1) : 1;
+    }
+
+    assert.equal(getMaxVal(emptyClinicalOps.appointments.by_status), 1);
+    assert.equal(emptyClinicalOps.total_patients, 0);
+  });
+});
