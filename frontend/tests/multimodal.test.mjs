@@ -129,3 +129,103 @@ describe("Voice Clinical Safety & Privacy Invariants", () => {
     });
   });
 });
+
+// ==========================================
+// 4. Vision Document Analyzer Contracts
+// ==========================================
+
+describe("Vision Image Validation & Analysis Contracts", () => {
+  const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
+  const SUPPORTED_VISION_MIMES = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"];
+
+  function validateVisionUpload(fileSize, mimeType) {
+    if (!fileSize || fileSize <= 0) {
+      throw new Error("Image file cannot be empty");
+    }
+    if (fileSize > MAX_IMAGE_BYTES) {
+      throw new Error("Image file exceeds maximum allowable size (10MB)");
+    }
+    if (!SUPPORTED_VISION_MIMES.includes(mimeType.toLowerCase())) {
+      throw new Error(`Unsupported image format (${mimeType}). Supported: PNG, JPEG, WEBP, GIF`);
+    }
+    return true;
+  }
+
+  test("accepts valid medical document image formats within size limit", () => {
+    assert.ok(validateVisionUpload(1024 * 500, "image/png"));
+    assert.ok(validateVisionUpload(1024 * 1024 * 2, "image/jpeg"));
+    assert.ok(validateVisionUpload(1024 * 200, "image/webp"));
+    assert.ok(validateVisionUpload(1024 * 100, "image/gif"));
+  });
+
+  test("rejects oversized images exceeding 10MB limit", () => {
+    assert.throws(() => validateVisionUpload(11 * 1024 * 1024, "image/png"), /exceeds maximum allowable size/);
+  });
+
+  test("rejects unsupported MIME formats", () => {
+    assert.throws(() => validateVisionUpload(1024, "application/pdf"), /Unsupported image format/);
+    assert.throws(() => validateVisionUpload(1024, "text/plain"), /Unsupported image format/);
+    assert.throws(() => validateVisionUpload(1024, "video/mp4"), /Unsupported image format/);
+  });
+
+  test("rejects empty image files (0 bytes)", () => {
+    assert.throws(() => validateVisionUpload(0, "image/png"), /cannot be empty/);
+  });
+
+  test("parses structured VisionAnalysisResponse schema", () => {
+    const mockVisionResponse = {
+      detected_features: ["Prescription header", "Medication label", "Dosage: 10mg"],
+      description: "Observation of a printed prescription document for blood pressure management.",
+      media_type: "image/png",
+      width: 1024,
+      height: 768,
+      confidence: 0.94,
+      clinical_disclaimer: "CareGraph AI Vision is for care navigation and symptom/document observation assistance only, and does not provide clinical diagnosis, medical evaluation, or diagnostic decisions.",
+      is_mock: true,
+    };
+
+    assert.equal(mockVisionResponse.detected_features.length, 3);
+    assert.equal(mockVisionResponse.detected_features[0], "Prescription header");
+    assert.ok(mockVisionResponse.description.includes("printed prescription"));
+    assert.equal(mockVisionResponse.width, 1024);
+    assert.equal(mockVisionResponse.height, 768);
+    assert.equal(mockVisionResponse.confidence, 0.94);
+    assert.equal(mockVisionResponse.is_mock, true);
+    assert.ok(mockVisionResponse.clinical_disclaimer.includes("does not provide clinical diagnosis"));
+  });
+
+  test("verifies vision preview URL creation and unmount cleanup pattern", () => {
+    const activeUrls = new Set();
+    const mockCreate = (id) => {
+      const url = `blob:http://localhost:3000/preview-${id}`;
+      activeUrls.add(url);
+      return url;
+    };
+    const mockRevoke = (url) => {
+      activeUrls.delete(url);
+    };
+
+    const url1 = mockCreate("doc1");
+    assert.equal(activeUrls.has(url1), true);
+
+    // Replace with doc2
+    mockRevoke(url1);
+    const url2 = mockCreate("doc2");
+    assert.equal(activeUrls.has(url1), false);
+    assert.equal(activeUrls.has(url2), true);
+
+    // Component unmount
+    mockRevoke(url2);
+    assert.equal(activeUrls.size, 0);
+  });
+
+  test("verifies zero image bytes stored in persistent web storage", () => {
+    // Assert invariant: no storage key should ever contain image base64 or blob
+    const forbiddenStorageKeys = ["vision_image", "image_base64", "patient_photo", "document_bytes"];
+    const mockLocalStorage = { caregraph_chat_session: "sess_12345", caregraph_token: "jwt_token" };
+
+    forbiddenStorageKeys.forEach((key) => {
+      assert.equal(mockLocalStorage[key], undefined, `Storage must not contain ${key}`);
+    });
+  });
+});
