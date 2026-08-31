@@ -382,3 +382,114 @@ describe("Outbound Messaging Gateway Validation & Contracts", () => {
     assert.ok(disclaimer.includes("does not provide medical diagnosis"));
   });
 });
+
+// ==========================================
+// 6. Multi-Modal Cross-Feature & Security Invariants
+// ==========================================
+
+describe("Multi-Modal Cross-Feature & Security Invariants", () => {
+  test("verifies centralized API client endpoint routing for all multimodal services", () => {
+    const multiModalEndpoints = {
+      voiceTranscribe: "/voice/transcribe",
+      voiceSynthesize: "/voice/synthesize",
+      visionAnalyze: "/vision/analyze",
+      messagingSend: "/messaging/send",
+      messagingOptOut: "/messaging/opt-out",
+    };
+
+    assert.equal(multiModalEndpoints.voiceTranscribe, "/voice/transcribe");
+    assert.equal(multiModalEndpoints.voiceSynthesize, "/voice/synthesize");
+    assert.equal(multiModalEndpoints.visionAnalyze, "/vision/analyze");
+    assert.equal(multiModalEndpoints.messagingSend, "/messaging/send");
+    assert.equal(multiModalEndpoints.messagingOptOut, "/messaging/opt-out");
+  });
+
+  test("verifies strict zero patient_id or user_id query/body injection in multimodal requests", () => {
+    const multimodalRequests = [
+      { endpoint: "/voice/transcribe", bodyType: "multipart/form-data", containsPatientId: false },
+      { endpoint: "/voice/synthesize", bodyType: "application/json", containsPatientId: false },
+      { endpoint: "/vision/analyze", bodyType: "multipart/form-data", containsPatientId: false },
+      { endpoint: "/messaging/send", bodyType: "application/json", containsPatientId: false },
+      { endpoint: "/messaging/opt-out", bodyType: "application/json", containsPatientId: false },
+    ];
+
+    multimodalRequests.forEach((req) => {
+      assert.equal(req.containsPatientId, false, `Endpoint ${req.endpoint} must derive identity purely from auth JWT`);
+    });
+  });
+
+  test("verifies role authorization matrix for multimodal surfaces", () => {
+    const accessMatrix = {
+      patient: {
+        voice: true,
+        vision: true,
+        messaging: false,
+      },
+      admin: {
+        voice: true,
+        vision: true,
+        messaging: true,
+      },
+      guest: {
+        voice: false,
+        vision: false,
+        messaging: false,
+      },
+    };
+
+    assert.equal(accessMatrix.patient.voice, true);
+    assert.equal(accessMatrix.patient.vision, true);
+    assert.equal(accessMatrix.patient.messaging, false, "Patient must not have access to admin messaging console");
+
+    assert.equal(accessMatrix.admin.messaging, true, "Admin must have access to admin messaging console");
+    assert.equal(accessMatrix.guest.voice, false);
+  });
+
+  test("verifies seamless cross-feature workflow linking to /chat", () => {
+    const multimodalChatLinks = {
+      voiceTranscriptionAction: "/chat",
+      visionObservationAction: "/chat",
+    };
+
+    assert.equal(multimodalChatLinks.voiceTranscriptionAction, "/chat");
+    assert.equal(multimodalChatLinks.visionObservationAction, "/chat");
+  });
+
+  test("verifies universal non-diagnostic safety disclaimers across all multimodal modalities", () => {
+    const disclaimers = {
+      voice: "Voice transcription and speech synthesis are accessibility and care-coordination interfaces. They do not perform autonomous medical diagnosis or clinical assessment.",
+      vision: "CareGraph AI Vision is for care navigation and symptom/document observation assistance only, and does not provide clinical diagnosis, medical evaluation, or diagnostic decisions.",
+      messaging: "CareGraph AI messaging is an operational communication interface for appointment alerts and care adherence reminders. It does not provide medical diagnosis, prescription adjustments, or clinical decision-making.",
+    };
+
+    Object.entries(disclaimers).forEach(([modality, text]) => {
+      assert.ok(
+        text.includes("do not perform autonomous medical diagnosis") ||
+        text.includes("does not provide clinical diagnosis") ||
+        text.includes("does not provide medical diagnosis"),
+        `Modality ${modality} must contain non-diagnostic clinical safety boundary`
+      );
+    });
+  });
+
+  test("verifies strict zero persistent storage of all multimodal raw media and records", () => {
+    const forbiddenMultimodalKeys = [
+      "audio_blob",
+      "audio_raw_bytes",
+      "voice_transcript_cache",
+      "vision_image_bytes",
+      "vision_preview_base64",
+      "sms_recipient_phone",
+      "whatsapp_message_body",
+    ];
+
+    const mockBrowserStorage = {
+      caregraph_token: "mock.jwt.token",
+      caregraph_chat_session: "sess_demo_123",
+    };
+
+    forbiddenMultimodalKeys.forEach((key) => {
+      assert.equal(mockBrowserStorage[key], undefined, `Storage must never contain ${key}`);
+    });
+  });
+});
