@@ -86,18 +86,9 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
 
         {/* Message Content Bubble */}
         <div className={`message-bubble ${role}`}>
-          {/* Classified Intent Pill */}
-          {role === "assistant" && intent && (
-            <div style={{ marginBottom: "var(--space-2)" }}>
-              <span className="badge badge-info" style={{ fontSize: "0.65rem", padding: "0.15rem 0.45rem" }}>
-                Intent: {intent}
-              </span>
-            </div>
-          )}
-
           <div style={{ whiteSpace: "pre-wrap" }}>{content}</div>
 
-          {/* Grounded Sources Section */}
+          {/* Sources Section */}
           {role === "assistant" && sources && sources.length > 0 && (
             <div style={{ marginTop: "var(--space-3)", borderTop: "1px solid var(--border-subtle)", paddingTop: "var(--space-2)" }}>
               <button
@@ -116,7 +107,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                 }}
               >
                 <span>📚</span>
-                <span>{showSources ? "Hide Grounded Sources" : `View ${sources.length} Grounded Source${sources.length > 1 ? "s" : ""}`}</span>
+                <span>{showSources ? "Hide Sources" : `View ${sources.length} Source${sources.length > 1 ? "s" : ""}`}</span>
               </button>
 
               {showSources && (

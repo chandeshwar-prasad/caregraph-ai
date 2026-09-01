@@ -242,7 +242,7 @@ in
 
 ## 5. Zero-PHI Privacy & Security Validation
 
-CareGraph AI enforces strict HIPAA and Privacy by Design standards:
+CareGraph AI follows a HIPAA-aligned design (not a formally certified or audited HIPAA-compliant system) and Privacy by Design standards:
 
 1. **Identifier Excision**:
    - `first_name`, `last_name`, `email`, `phone`, `date_of_birth`, and `user_id` are completely excluded from all analytics tables.

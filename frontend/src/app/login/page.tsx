@@ -128,42 +128,6 @@ function LoginFormContent() {
           </p>
         </div>
 
-        {/* Quick Login Presets */}
-        <div className="quick-login-card" aria-label="Development Quick Login Presets">
-          <div className="flex items-center justify-between" style={{ marginBottom: "var(--space-2)" }}>
-            <span style={{ fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--brand-primary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              ⚡ Demo Quick Login Presets
-            </span>
-            <span className="badge badge-info" style={{ fontSize: "0.6rem" }}>
-              Sandbox
-            </span>
-          </div>
-          <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-dim)", marginBottom: "var(--space-3)" }}>
-            Instant evaluation authentication using pre-seeded synthetic credentials:
-          </p>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-2)" }}>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => handleQuickLogin("patient")}
-              disabled={isSubmitting}
-              style={{ fontSize: "var(--font-size-xs)", padding: "0.5rem" }}
-            >
-              🔑 Patient Demo
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => handleQuickLogin("admin")}
-              disabled={isSubmitting}
-              style={{ fontSize: "var(--font-size-xs)", padding: "0.5rem" }}
-            >
-              🛡️ Admin Demo
-            </button>
-          </div>
-        </div>
-
         {/* Tab Selector */}
         <div className="tab-group" role="tablist">
           <button
@@ -286,7 +250,7 @@ function LoginFormContent() {
                   <span>Signing In...</span>
                 </div>
               ) : (
-                "Sign In to Console"
+                "Sign In"
               )}
             </button>
           </form>
@@ -369,6 +333,42 @@ function LoginFormContent() {
             </button>
           </form>
         )}
+
+        {/* Quick Login Presets (Subordinated below standard authentication form) */}
+        <div className="quick-login-card" aria-label="Evaluator and Demo Access Presets" style={{ marginTop: "var(--space-6)" }}>
+          <div className="flex items-center justify-between" style={{ marginBottom: "var(--space-2)" }}>
+            <span style={{ fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--brand-primary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              ⚡ Evaluator / Demo Access
+            </span>
+            <span className="badge badge-info" style={{ fontSize: "0.6rem" }}>
+              Sandbox
+            </span>
+          </div>
+          <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-dim)", marginBottom: "var(--space-3)" }}>
+            Instant evaluation authentication using pre-seeded synthetic credentials:
+          </p>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-2)" }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => handleQuickLogin("patient")}
+              disabled={isSubmitting}
+              style={{ fontSize: "var(--font-size-xs)", padding: "0.5rem" }}
+            >
+              🔑 Patient Demo
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => handleQuickLogin("admin")}
+              disabled={isSubmitting}
+              style={{ fontSize: "var(--font-size-xs)", padding: "0.5rem" }}
+            >
+              🛡️ Admin Demo
+            </button>
+          </div>
+        </div>
 
         {/* Footer Disclaimer */}
         <div style={{ marginTop: "var(--space-6)", textAlign: "center", borderTop: "1px solid var(--border-subtle)", paddingTop: "var(--space-4)" }}>

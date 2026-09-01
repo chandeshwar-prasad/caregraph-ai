@@ -212,7 +212,7 @@ export default function ChatPage() {
               AI Care Coordinator
             </h3>
             <span style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>
-              Thread: <code style={{ color: "var(--text-muted)" }}>{sessionId || "loading..."}</code>
+              Care Coordination Session
             </span>
           </div>
         </div>
@@ -250,7 +250,7 @@ export default function ChatPage() {
             <div className="message-bubble assistant">
               <div className="flex items-center gap-2" style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)" }}>
                 <div className="spinner" style={{ width: "14px", height: "14px", borderWidth: "2px" }} />
-                <span>Analyzing request & coordinating agents...</span>
+                <span>Reviewing your request...</span>
               </div>
             </div>
           </div>

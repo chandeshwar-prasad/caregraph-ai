@@ -1,8 +1,9 @@
-# CareGraph AI — Clinical Care Navigation & Scheduling Multi-Agent System
+# CareGraph AI — Clinical Care Navigation & Scheduling Workflow
 
-CareGraph AI is a multi-agent AI system designed to support clinical care navigation, patient information access, scheduling, triage assistance, and related healthcare workflows.
+CareGraph AI is an LLM-routed care-coordination workflow with specialized deterministic nodes designed to support clinical care navigation, patient information access, scheduling, triage assistance, and related healthcare workflows. The current architecture employs a single LLM intent-classification decision (Supervisor router) followed by deterministic, specialized workflow nodes.
 
 > **Note on Project Identity:** *CareGraph AI* is the official project identity. *(HealthSync AI was the internal development codename during Phases 1–10 Milestones 1–5).*
+> **Compliance & Clinical Disclaimer:** HIPAA-aligned design; not a formally certified or audited HIPAA-compliant system. Not a medical device; for demonstration and research purposes only.
 
 ---
 
@@ -24,9 +25,9 @@ Phase 2 integrates the AI coordination layer and intent classification:
 - **Mock Fallback Mode**: Integrates a deterministic keyword-based classifier executing when `GROQ_API_KEY` is not present (`is_mock: True`).
 
 ### **PHASE 3 — LANGGRAPH FOUNDATION: COMPLETE**
-Phase 3 integrates the stateful multi-agent orchestration layer:
+Phase 3 integrates the stateful workflow orchestration layer:
 - **LangGraph State Schema**: Defined `CareGraphState(TypedDict)` (with `HealthSyncState` compatibility alias) containing JSON-serializable execution state attributes.
-- **Supervisor & Conditional Routing**: Implemented Supervisor node routing requests based on intent (`triage`, `scheduling`, `records`, `reminders`, `emergency`, `general`).
+- **Supervisor & Conditional Routing**: Implemented Supervisor node routing requests based on intent classification (`triage`, `scheduling`, `records`, `reminders`, `emergency`, `general`) to specialized deterministic nodes.
 - **MemorySaver Checkpointing**: State persistence across conversation turns configured with user-scoped `thread_id` keys.
 - **Human-in-the-Loop (HITL) Interruption**: Dynamic `interrupt()` pauses graph execution when patient approval is required.
 - **FastAPI Endpoints**: Integrated `POST /chat` with the graph pipeline and added `POST /chat/approve` to resume paused threads upon `"approved"` or `"rejected"` decisions.
@@ -59,13 +60,13 @@ Phase 6 implements secure, patient-scoped data management tools:
 - **LangGraph `patient_data_node`**: Unified node replacing stubs; dispatches based on intent (`RECORDS` vs `REMINDERS`).
 - **Streamlit Patient Console**: Added `❤️ My Vitals`, `💊 My Medications`, and `⏰ My Reminders` tabs with interactive forms, tables, and medical disclaimers.
 
-### **PHASE 7 — PGVECTOR & RAG: COMPLETE**
-Phase 7 implements dense vector search and grounded clinical care retrieval:
-- **pgvector Extension & Schema**: `KnowledgeDocument` table with `pgvector.sqlalchemy.Vector(384)` embedding column and complete provenance metadata (`title`, `source`, `source_type`, `category`, `version`, `status`, `publication_date`).
-- **Embedding Service**: 384-dimensional dense vector generator with unit normalization (`app/services/embeddings.py`).
-- **Vector Store Layer**: Semantic search with cosine similarity ranking and metadata filtering (`status="active"`, `category="triage"`) (`app/services/vector_store.py`).
+### **PHASE 7 — RAG & RETRIEVAL LAYER: COMPLETE**
+Phase 7 implements grounded clinical care retrieval:
+- **Knowledge Base Schema**: `KnowledgeDocument` table with JSON embedding representation and provenance metadata (`title`, `source`, `source_type`, `category`, `version`, `status`, `publication_date`). PostgreSQL `pgvector` extension setup is staged in schemas for future in-database vector indexing.
+- **Embedding Service**: Deterministic hash-based lexical vector generator (`app/services/embeddings.py`) producing 384-dimensional unit-normalized dense vectors based on token hashing.
+- **Vector Retrieval Layer**: Semantic search executing cosine similarity ranking in pure Python with NumPy (`app/services/vector_store.py`) and metadata filtering (`status="active"`, `category="triage"`).
 - **LangGraph Triage Node RAG**: Grounded clinical retrieval directly injected into `triage_node` with source provenance attribution and safe out-of-domain degradation (`app/services/knowledge.py`, `app/services/graph.py`).
-- **RAG Evaluation Suite**: 100% Top-1 retrieval accuracy, 0 unsupported claims, 0% stale document leakage (`tests/test_rag_evaluation.py`).
+- **RAG Evaluation Suite**: 100% Top-1 accuracy on a 5-query internal smoke-test benchmark, 0 unsupported claims, 0% stale document leakage (`tests/test_rag_evaluation.py`).
 - **Knowledge Base Content Transparency**: The documents indexed in the knowledge base are **synthetic curated care-navigation summaries** designed for care coordination demonstration and testing. They do not constitute authoritative medical literature or certified clinical guidelines.
 
 ### **PHASE 8 — SAFETY, SERVER-SIDE TOOL AUTHORIZATION & PATIENT CONSENT: COMPLETE**
@@ -75,6 +76,7 @@ Phase 8 establishes server-side tool access controls, patient privacy boundaries
 - **Patient Consent Enforcement**: Requires active, unexpired consent (`verify_patient_consent()`) before executing protected patient data tools; denies access on expired or missing consent.
 - **Minimum-Necessary Data Controls**: Automatically clamps bulk record queries to safe bounds (`MAX_RECORDS_LIMIT = 50`) and sanitizes parameter types and enums.
 - **Structured Zero-PHI Audit Logging**: Emits structured audit events containing caller ID, action, and tool names with zero sensitive free text or PHI.
+- **Compliance Scope**: HIPAA-aligned design; not a formally certified or audited HIPAA-compliant system.
 
 ### **PHASE 9 — OBSERVABILITY, ZERO-PHI TELEMETRY & EVALUATION: COMPLETE**
 Phase 9 implements production telemetry, quantitative evaluation, and cost analytics:
@@ -85,7 +87,7 @@ Phase 9 implements production telemetry, quantitative evaluation, and cost analy
 
 ### **PHASE 10 — PRODUCTION READINESS, DOCKER CONTAINERIZATION & CI/CD: COMPLETE**
 Phase 10 establishes production containerization, CI/CD pipeline automation, and deployment configuration:
-- **Multi-Container Architecture (`docker-compose.yml`)**: Orchestrates isolated services (`caregraph-db` with PostgreSQL 16 + pgvector, `caregraph-api` on FastAPI/Uvicorn, `caregraph-ui` on Streamlit) connected via bridge network `caregraph-network` with persistent volume `caregraph_pgdata`.
+- **Multi-Container Architecture (`docker-compose.yml`)**: Orchestrates isolated services (`caregraph-db` with PostgreSQL 16 + pgvector container, `caregraph-api` on FastAPI/Uvicorn, `caregraph-ui` on Streamlit) connected via bridge network `caregraph-network` with persistent volume `caregraph_pgdata`.
 - **Production Dockerfiles (`Dockerfile.backend`, `Dockerfile.frontend`)**: Multi-stage container builds with curl healthchecks (`/health`, `/_stcore/health`) and pinned dependencies.
 - **Automated CI/CD Pipeline (`.github/workflows/ci.yml`)**: 4-stage GitHub Actions pipeline enforcing secret hygiene, 129-test pytest regression execution, Docker build verification, and staged cloud deployment checks.
 - **Secret & Configuration Hygiene**: Validated `.env*` exclusion, placeholder-only `.env.example`, and production JWT entropy requirements.
@@ -95,23 +97,24 @@ Phase 10 establishes production containerization, CI/CD pipeline automation, and
 
 ## Verified Test Results & Regression Baseline
 
-CareGraph AI maintains a comprehensive automated regression suite verifying end-to-end multi-agent orchestration, safety, tool security, vector retrieval, and configuration integrity:
+CareGraph AI maintains an automated regression test suite verifying workflow routing, safety bounds, tool security, retrieval logic, and configuration integrity:
 
 ```text
-======================= 129 passed, 1 warning in 13.26s =======================
+======================= 215 passed, 1 warning in 25.67s =======================
 ```
 
-*(Historical progression: 69 tests passing at Phase 7 completion; expanded to 129 tests across Phases 8–10).*
+*(Historical progression: 69 tests passing at Phase 7; 129 tests across Phases 8–10; expanded to 215 backend tests at full release).*
 
 ### Verification & Testing Layer Distinctions
 
-CareGraph AI clearly distinguishes between its four verification layers:
-1. **Automated Regression Suite (129 Tests)**: In-memory isolated pytest execution testing all API endpoints, graph orchestration, security matrices, telemetry redaction, RAG accuracy, and CI configuration.
-2. **Synthetic Benchmark Evaluation (55 Scenarios)**: Offline evaluation harness (`app/services/evaluation.py`) executing diverse clinical scenarios against expected intent, safety escalation, and latency benchmarks.
-3. **Local Docker Runtime Validation**: Live Docker Compose execution verifying inter-container networking, PostgreSQL + pgvector persistence, backend `/health` (HTTP 200), and frontend UI reachability on local ports 8000 and 8501.
-4. **Cloud Deployment Staging**: Container images, environment mappings, and CI/CD deployment jobs configured for Render/Azure staging without live cloud mutation during local verification.
+CareGraph AI clearly distinguishes between its testing and verification layers:
+1. **Automated Backend Regression Suite (215 Tests)**: In-memory isolated pytest execution testing all API endpoints, graph orchestration, security matrices, telemetry redaction, RAG accuracy, and CI configuration.
+2. **Frontend Contract & Smoke Tests (112 Tests)**: Node.js test suite (`node --test tests/*.test.mjs`) in `frontend/` validating authentication token parsing, route authorization matrices, API client mappings, and schema contracts. *(Note: These are logic/smoke tests and do not provide full regression coverage of React UI components or browser DOM rendering).*
+3. **Synthetic Benchmark Evaluation (55 Scenarios)**: Offline evaluation harness (`app/services/evaluation.py`) executing diverse clinical scenarios against expected intent, safety escalation, and latency benchmarks.
+4. **Local Docker Runtime Validation**: Live Docker Compose execution verifying inter-container networking, PostgreSQL persistence, backend `/health` (HTTP 200), and frontend UI reachability on local ports 8000 and 8501.
+5. **Cloud Deployment Staging**: Container images, environment mappings, and CI/CD deployment jobs configured for Render staging.
 
-### Test Suite Breakdown (129 Tests Passing)
+### Test Suite Breakdown (Selected Highlights)
 
 | Test Suite | Tests | Target Coverage & Invariants |
 |---|---|---|
@@ -125,7 +128,7 @@ CareGraph AI clearly distinguishes between its four verification layers:
 | `tests/test_knowledge_models.py` | 4 | Phase 7: KnowledgeDocument schema, metadata fields, vector embeddings, status filtering |
 | `tests/test_vector_search.py` | 9 | Phase 7: 384-dimensional dense vector embeddings, cosine similarity ranking, index maintenance |
 | `tests/test_rag_triage.py` | 4 | Phase 7: LangGraph triage RAG retrieval injection, source attribution, out-of-domain degradation |
-| `tests/test_rag_evaluation.py` | 6 | Phase 7: Quantitative RAG benchmarks (Top-1 accuracy, zero hallucination, version filtering, emergency safety override) |
+| `tests/test_rag_evaluation.py` | 6 | Phase 7: Quantitative RAG smoke benchmarks (5-query Top-1 accuracy, zero hallucination, version filtering, emergency safety override) |
 | `tests/test_telemetry.py` | 8 | Phase 9: Zero-PHI sanitization, trace span lifecycles, execution telemetry, cost metrics |
 | `tests/test_tool_authorization.py` | 9 | Phase 8: Server-side tool authorization matrix, minimum-necessary data clamping, permission enforcement |
 | `tests/test_model_routing_and_cost.py` | 6 | Phase 9: Model router policy, no-silent-escalation rules, token tracking and cost analytics |
@@ -164,25 +167,26 @@ Input Screening (max 2000 chars, injection detection)
     ↓
 Deterministic Red-Flag Safety Check (evaluate_red_flags())
     ↓ (emergency)                      ↓ (safe)
-Emergency Escalation          Intent Supervisor (LLM)
+Emergency Escalation          Intent Supervisor (Single LLM decision)
 (no LLM, no scheduling)           ↓
-                          ┌─────────────────┐
-                          │ Triage  │Sched. │ ...
-                          └─────────────────┘
-                                    ↓
-                          Scheduling Agent Node
-                                    ↓
+                          ┌─────────────────────────────┐
+                          │ Deterministic Node Dispatch │
+                          │ (Triage / Sched. / Records) │
+                          └─────────────────────────────┘
+                                     ↓
+                          Scheduling Node (Deterministic)
+                                     ↓
                           search_available_slots()
                           (Synthetic/Mock Provider)
-                                    ↓
+                                     ↓
                           interrupt() → HITL Pause
-                                    ↓
+                                     ↓
                           Patient: Approve / Reject
-                                    ↓
+                                     ↓
                           book_appointment_slot()
                           crud.create_appointment()
                           DB Verification
-                                    ↓
+                                     ↓
                           Confirmed Response
 ```
 
@@ -197,12 +201,14 @@ Emergency Escalation          Intent Supervisor (LLM)
 ## Technical Stack
 
 - **Backend**: FastAPI, Uvicorn, Pydantic, SQLAlchemy.
-- **Database**: PostgreSQL (SCRAM-SHA-256) with `appointments` table.
-- **AI Orchestration**: LangGraph (`StateGraph`, `MemorySaver`, `interrupt()`).
+- **Database**: PostgreSQL (SCRAM-SHA-256) with `appointments` table (schema staged for future pgvector migration).
+- **Workflow Orchestration**: LangGraph (`StateGraph`, `MemorySaver`, `interrupt()`) with single LLM intent routing and specialized deterministic nodes.
 - **LLM**: Groq API (`llama-3.3-70b-versatile`) with deterministic mock fallback.
+- **Vector Retrieval**: Deterministic 384-dimensional lexical hash vectors with in-memory Python cosine similarity.
 - **Authentication**: JWT (JSON Web Tokens), OAuth2 Bearer, Bcrypt password hashing.
-- **Frontend**: Streamlit.
-- **Testing**: Pytest, HTTPX TestClient.
+- **Frontend**: Next.js 14 (App Router) & Streamlit console.
+- **Testing**: Pytest (215 backend regression tests) + Node.js contract & smoke tests (112 tests; note: does not provide full React UI component DOM coverage).
+- **Compliance Scope**: HIPAA-aligned design; not a formally certified or audited HIPAA-compliant system.
 
 ---
 

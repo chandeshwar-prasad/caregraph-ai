@@ -45,7 +45,7 @@ export const HitlApprovalCard: React.FC<HitlApprovalCardProps> = ({
       </div>
 
       <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", marginBottom: "var(--space-2)" }}>
-        Please verify the proposed appointment details before confirmation:
+        This appointment has not been booked yet. Review the details below, then choose Approve &amp; Book or Decline.
       </p>
 
       <table className="hitl-table">

@@ -45,7 +45,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       ],
     },
     {
-      title: "Multi-Modal (Phase 11)",
+      title: "Voice & Vision",
       items: [
         { name: "Voice Assistant", href: "/voice", icon: "🎙️" },
         { name: "Vision Analyzer", href: "/vision", icon: "👁️" },
