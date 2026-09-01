@@ -5,7 +5,7 @@ import { AuthProvider } from "../context/AuthContext";
 
 export const metadata: Metadata = {
   title: "CareGraph AI - Care Coordination Assistant",
-  description: "Multi-Agent, Multi-Model Healthcare Navigation & Care-Management Assistant",
+  description: "Clinical Care Navigation & Scheduling Workflow",
 };
 
 export default function RootLayout({

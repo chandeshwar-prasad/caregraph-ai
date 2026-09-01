@@ -107,7 +107,7 @@ export default function DashboardPage() {
             <p style={{ color: "var(--text-secondary)", fontSize: "var(--font-size-sm)" }}>
               {role === "admin"
                 ? "Admin Control & Executive Intelligence Hub — Operational telemetry, benchmark scorecards, and Power BI analytics."
-                : "Care Navigation & Management Console — Multi-agent symptom guidance, appointments, vitals, and reminders."}
+                : "Care Navigation & Management Console — Clinical symptom guidance, appointments, vitals, and reminders."}
             </p>
           </div>
 
@@ -218,7 +218,7 @@ export default function DashboardPage() {
                   AI Care Coordination
                 </h4>
                 <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
-                  Multi-agent clinical triage, grounded health guidance, and Human-in-the-Loop scheduling.
+                  Clinical triage guidance, grounded health sources, and Human-in-the-Loop scheduling.
                 </p>
               </Link>
 

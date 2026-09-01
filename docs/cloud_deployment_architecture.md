@@ -2,7 +2,7 @@
 
 **Target Platform Strategy:** Decoupled Zero-Cost Cloud Architecture  
 **Target Recurring Cost:** ₹0.00 / month ($0.00 / month)  
-**Project:** CareGraph AI — Clinical Care Navigation & Scheduling Multi-Agent System  
+**Project:** CareGraph AI — Clinical Care Navigation & Scheduling Workflow
 **Phase & Milestone:** Phase 10 — Milestone 5 & 6 (Architecture Design & Verification)  
 **Status:** Completed Architecture & Deployment-Readiness Design (**Zero Cloud Mutation / Zero Live Deployment**)
 

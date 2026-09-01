@@ -14,14 +14,14 @@ interface ConsentDefinition {
 const CONSENT_CATALOG: ConsentDefinition[] = [
   {
     type: "ai_processing",
-    title: "AI Multi-Agent Processing",
-    description: "Authorize LangGraph supervisor and specialized triage agents to process your queries.",
+    title: "AI Workflow & Triage Routing",
+    description: "Authorize LangGraph supervisor to route queries to specialized triage and care workflows.",
     icon: "🧬",
   },
   {
     type: "appointment_booking",
     title: "Appointment Coordination & Booking",
-    description: "Authorize scheduling agent to search availability and hold mock consultation slots.",
+    description: "Authorize scheduling workflow to search availability and hold mock consultation slots.",
     icon: "📅",
   },
   {

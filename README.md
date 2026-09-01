@@ -33,20 +33,20 @@ Phase 3 integrates the stateful workflow orchestration layer:
 - **FastAPI Endpoints**: Integrated `POST /chat` with the graph pipeline and added `POST /chat/approve` to resume paused threads upon `"approved"` or `"rejected"` decisions.
 - **Streamlit HITL Interface**: Integrated inline Approve/Reject workflow controls in Streamlit.
 
-### **PHASE 4 — FIRST VERTICAL SLICE (TRIAGE AGENT): COMPLETE**
-Phase 4 implements the complete Triage Agent vertical slice:
+### **PHASE 4 — FIRST VERTICAL SLICE (TRIAGE NODE): COMPLETE**
+Phase 4 implements the complete Triage vertical slice:
 - **Deterministic Red-Flag Safety Engine**: Pure Python evaluator (`evaluate_red_flags()`) executing before LLM reasoning to force immediate 911/112/102 emergency escalation on life-threatening symptoms including chest pain, heart attack, cardiac arrest, difficulty breathing, stroke symptoms, and others.
 - **Input Screening & Security**: Message length enforcement (max 2000 chars) and prompt injection override screening (`"ignore safety instructions"`).
-- **Triage Agent Core Logic**: Categorizes symptoms into `emergency`, `urgent`, and `non_urgent` risk levels and structures non-diagnostic care navigation advice and follow-up questions.
+- **Triage Node Core Logic**: Categorizes symptoms into `emergency`, `urgent`, and `non_urgent` risk levels and structures non-diagnostic care navigation advice and follow-up questions.
 - **Local Grounded Knowledge Base**: Grounded retrieval attaching source attribution.
 - **Structured Audit Logging**: Minimal audit event logger (`log_audit_event()`) storing workflow execution metadata without sensitive free text or PHI.
 - **Streamlit Presentation**: Renders color-coded risk status badges, grounded source citations, and follow-up question chips.
 
-### **PHASE 5 — FIRST VERTICAL SLICE (SCHEDULING AGENT): COMPLETE**
-Phase 5 implements the complete Scheduling Agent vertical slice on top of the Phase 1–4 foundation:
+### **PHASE 5 — FIRST VERTICAL SLICE (SCHEDULING NODE): COMPLETE**
+Phase 5 implements the complete Scheduling vertical slice on top of the Phase 1–4 foundation:
 - **Appointment Database Model**: `Appointment` table added to PostgreSQL with fields: `id`, `patient_id`, `doctor_name`, `specialty`, `appointment_time`, `status` (`scheduled`/`cancelled`), `notes`, `created_at`.
 - **Synthetic Availability Provider**: `app/services/scheduling.py` provides `search_available_slots()` returning deterministic mock slots keyed by specialty/date preference.
-- **LangGraph Scheduling Agent Node**: Replaced Phase 3 HITL stub with a full `scheduling_node` that extracts intent entities, searches synthetic provider, selects slot, and calls `interrupt()` to pause the graph for patient approval.
+- **LangGraph Scheduling Node**: Replaced Phase 3 HITL stub with a full `scheduling_node` that extracts intent entities, searches synthetic provider, selects slot, and calls `interrupt()` to pause the graph for patient approval.
 - **Plan → Act → Verify DB Booking**: On approval, `book_appointment_slot()` calls `crud.create_appointment()` and verifies database persistence.
 - **Appointment API Endpoints**: `GET /appointments/me` and `POST /appointments/{id}/cancel`.
 - **Streamlit Appointments UI**: Added `📅 My Appointments` tab listing scheduled and cancelled appointments.
