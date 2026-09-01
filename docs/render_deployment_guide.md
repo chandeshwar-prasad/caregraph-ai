@@ -142,3 +142,41 @@ Once deployed, verify the following:
 5. **Zero-PHI & Security Confirmation**:
    - Confirm patient role is restricted from `/admin/*` routes.
    - Confirm zero PHI is leaked across analytics exports or browser consoles.
+
+---
+
+## 6. Production Verification & Smoke Test Log
+
+### 6.1 Verified Deployment Metadata
+- **Frontend URL:** [https://caregraph-ui.onrender.com](https://caregraph-ui.onrender.com)
+- **Backend API URL:** [https://caregraph-api.onrender.com](https://caregraph-api.onrender.com)
+- **Verified Production Commit:** `27dafc1 — fix: use single worker for in-memory HITL state`
+- **Production Architecture:** Uvicorn runs with `--workers 1` (`Dockerfile.backend`) because the current LangGraph HITL implementation uses process-local `MemorySaver` state.
+
+---
+
+### 6.2 VERIFIED CURRENT PRODUCTION STATE
+
+The end-to-end Human-In-The-Loop (HITL) care coordination and scheduling workflow has been verified live in Render production:
+
+1. **Patient Demo Authentication:** Authenticated successfully as `patient_demo`.
+2. **AI Care Coordinator:** Chat interface loaded and initialized conversation session thread.
+3. **Intent Classification:** Scheduling query (*"I need an appointment with a cardiologist tomorrow"*) was accurately detected and classified.
+4. **HITL Verification Presentation:** LangGraph execution suspended at `scheduling_node`, yielding an approval card with slot details (`approval_required: true`).
+5. **Approval Submission:** Patient submitted approval via the `"✅ Approve & Book Appointment"` UI action (`POST /chat/approve`).
+6. **State Resumption:** Single-worker ASGI process successfully recovered the suspended thread from `MemorySaver`.
+7. **Appointment Confirmation:** Appointment booking completed and returned structured confirmation.
+8. **Entity Identification:** Returned `Appointment ID: #1`.
+9. **Database Persistence:** Confirmed PostgreSQL record persistence (`appointments` table).
+10. **Defect Resolution:** The previous production error (`404 Not Found: "No pending approval workflow found for this session."`) is completely resolved.
+
+---
+
+### 6.3 KNOWN FUTURE HARDENING ITEMS & LIMITATIONS
+
+The following architectural trade-offs and future hardening items are documented for the current deployment:
+
+1. **Ephemeral Process Volatility:** `MemorySaver` checkpoint state is stored in process RAM and is lost if the backend process restarts or if the Render free-tier instance spins down due to inactivity (15-minute idle window) during an unapproved HITL workflow.
+2. **Single-Worker Throughput Ceiling:** Running Uvicorn with `--workers 1` constrains concurrent execution to a single OS process.
+3. **Database Checkpointer Architecture:** A future multi-worker or multi-instance horizontally scalable architecture should adopt a persistent PostgreSQL-backed LangGraph checkpointer (`PostgresSaver`). *(Note: Persistent PostgreSQL-backed checkpointer is NOT yet implemented; the system currently relies on process-local `MemorySaver`).*
+4. **JWT Expiration Window:** JWT access tokens expire after 30 minutes (`ACCESS_TOKEN_EXPIRE_MINUTES=30`). Submitting an approval after token expiration will fail authentication (HTTP 401) and require the user to re-authenticate.
