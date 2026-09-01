@@ -124,7 +124,7 @@ function LoginFormContent() {
             CareGraph AI
           </h1>
           <p style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
-            Multi-Agent Healthcare Navigation & Care Coordination
+            Clinical Care Navigation & Scheduling Workflow
           </p>
         </div>
 
