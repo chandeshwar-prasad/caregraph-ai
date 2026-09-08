@@ -47,6 +47,22 @@ class ChatResponse(BaseModel):
     sources: List[Dict[str, Any]] = Field(default_factory=list, description="Grounded knowledge citations.")
     selected_slot: Optional[Dict[str, Any]] = Field(default=None, description="Scheduling slot details presented for HITL confirmation.")
 
+
+class VoiceChatResponse(ChatResponse):
+    transcribed_text: str = Field(description="Speech-to-text transcription of patient's audio input.")
+    audio_base64: Optional[str] = Field(default=None, description="Base64-encoded synthesized speech audio of agent response.")
+    audio_media_type: str = Field(default="audio/wav", description="MIME media type of the synthesized voice audio.")
+
+
+class VisionChatResponse(ChatResponse):
+    vision_analysis: Dict[str, Any] = Field(default_factory=dict, description="Raw vision feature and document analysis metadata.")
+    extracted_observations: List[str] = Field(default_factory=list, description="Specific clinical observations or text detected in the document/image.")
+    clinical_disclaimer: str = Field(
+        default="CareGraph AI Vision is for care navigation and symptom observation assistance only, and does not provide clinical diagnosis or diagnostic decisions.",
+        description="Mandatory clinical safety disclaimer"
+    )
+
+
 class AppointmentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

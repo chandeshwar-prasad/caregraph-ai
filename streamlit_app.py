@@ -279,6 +279,106 @@ else:
 
         headers = {"Authorization": f"Bearer {st.session_state.token}"}
             
+        # Multimodal Input Expanders
+        st.markdown("### 🎙️ / 🖼️ Multimodal Perception & Input")
+        mm_tab1, mm_tab2 = st.tabs(["🎙️ Voice-to-Voice Agent", "🖼️ Medical Document / Image Ingestion"])
+
+        with mm_tab1:
+            st.write("Upload or record a spoken voice message. The agent will transcribe, reason via LangGraph, and synthesize a spoken audio reply.")
+            voice_file = st.file_uploader("Upload Audio (WAV/MP3/M4A)", type=["wav", "mp3", "m4a", "ogg"], key="voice_uploader")
+            synthesize_reply = st.checkbox("Synthesize Spoken Voice Reply (TTS)", value=True, key="chk_tts")
+            
+            if st.button("🚀 Send Voice Message", key="btn_send_voice"):
+                if not voice_file:
+                    st.warning("Please upload an audio file first.")
+                else:
+                    with st.spinner("Transcribing speech and coordinating care agent..."):
+                        try:
+                            files = {"file": (voice_file.name, voice_file.getvalue(), voice_file.type or "audio/wav")}
+                            data = {
+                                "session_id": st.session_state.session_id,
+                                "synthesize_voice": "true" if synthesize_reply else "false",
+                                "use_fhir": "false"
+                            }
+                            res = httpx.post(f"{API_BASE_URL}/chat/voice", files=files, data=data, headers=headers, timeout=30.0)
+                            if res.status_code == 200:
+                                v_data = res.json()
+                                # Add user transcribed message
+                                st.session_state.chat_history.append({
+                                    "role": "user",
+                                    "content": f"🎙️ *[Voice]* \"{v_data.get('transcribed_text', '')}\""
+                                })
+                                # Add assistant response
+                                st.session_state.chat_history.append({
+                                    "role": "assistant",
+                                    "content": v_data["message"],
+                                    "intent": v_data.get("intent"),
+                                    "is_mock": v_data.get("is_mock"),
+                                    "audio_base64": v_data.get("audio_base64"),
+                                    "audio_media_type": v_data.get("audio_media_type", "audio/wav"),
+                                    "approval_required": v_data.get("approval_required", False),
+                                    "approval_status": v_data.get("approval_status"),
+                                    "risk_level": v_data.get("risk_level"),
+                                    "safety_escalated": v_data.get("safety_escalated", False),
+                                    "follow_up_questions": v_data.get("follow_up_questions", []),
+                                    "sources": v_data.get("sources", []),
+                                    "selected_slot": v_data.get("selected_slot")
+                                })
+                                st.success("Voice message processed!")
+                                st.rerun()
+                            else:
+                                st.error(f"Voice coordination failed: {res.json().get('detail', res.text)}")
+                        except Exception as e:
+                            st.error(f"Error connecting to voice service: {e}")
+
+        with mm_tab2:
+            st.write("Upload a medical report, lab result, prescription, or vitals reading. The agent analyzes features and integrates findings into care coordination.")
+            img_file = st.file_uploader("Upload Image/Document (PNG/JPG/WEBP)", type=["png", "jpg", "jpeg", "webp"], key="img_uploader")
+            doc_query = st.text_input("Optional question or instruction regarding this image:", placeholder="e.g. Please log these vitals or explain what doctor I should see", key="doc_prompt")
+            
+            if st.button("🔍 Ingest & Analyze Document", key="btn_send_vision"):
+                if not img_file:
+                    st.warning("Please upload an image or document first.")
+                else:
+                    with st.spinner("Analyzing document and reasoning through LangGraph agent..."):
+                        try:
+                            files = {"file": (img_file.name, img_file.getvalue(), img_file.type or "image/png")}
+                            data = {
+                                "message": doc_query or "Please review this uploaded medical document.",
+                                "session_id": st.session_state.session_id,
+                                "use_fhir": "false"
+                            }
+                            res = httpx.post(f"{API_BASE_URL}/chat/vision", files=files, data=data, headers=headers, timeout=30.0)
+                            if res.status_code == 200:
+                                vis_data = res.json()
+                                st.session_state.chat_history.append({
+                                    "role": "user",
+                                    "content": f"🖼️ *[Document Uploaded: {img_file.name}]* {doc_query or ''}"
+                                })
+                                st.session_state.chat_history.append({
+                                    "role": "assistant",
+                                    "content": vis_data["message"],
+                                    "intent": vis_data.get("intent"),
+                                    "is_mock": vis_data.get("is_mock"),
+                                    "extracted_observations": vis_data.get("extracted_observations", []),
+                                    "clinical_disclaimer": vis_data.get("clinical_disclaimer"),
+                                    "approval_required": vis_data.get("approval_required", False),
+                                    "approval_status": vis_data.get("approval_status"),
+                                    "risk_level": vis_data.get("risk_level"),
+                                    "safety_escalated": vis_data.get("safety_escalated", False),
+                                    "follow_up_questions": vis_data.get("follow_up_questions", []),
+                                    "sources": vis_data.get("sources", []),
+                                    "selected_slot": vis_data.get("selected_slot")
+                                })
+                                st.success("Document analyzed and integrated into conversation state!")
+                                st.rerun()
+                            else:
+                                st.error(f"Vision analysis failed: {res.json().get('detail', res.text)}")
+                        except Exception as e:
+                            st.error(f"Error connecting to vision service: {e}")
+
+        st.markdown("---")
+
         # Display past messages
         for idx, msg in enumerate(st.session_state.chat_history):
             with st.chat_message(msg["role"]):
@@ -293,7 +393,21 @@ else:
                         st.info("🟢 **CARE NAVIGATION**: Routine symptom coordination.")
 
                 st.markdown(msg["content"])
-                
+
+                # If voice audio was synthesized, render audio player
+                if msg.get("audio_base64") and msg["role"] == "assistant":
+                    import base64 as b64_mod
+                    audio_raw = b64_mod.b64decode(msg["audio_base64"])
+                    st.audio(audio_raw, format=msg.get("audio_media_type", "audio/wav"))
+
+                # If vision extracted observations are present
+                if msg.get("extracted_observations") and msg["role"] == "assistant":
+                    with st.expander("🔬 Detected Document Features & Disclaimers"):
+                        for obs in msg["extracted_observations"]:
+                            st.write(f"• {obs}")
+                        if msg.get("clinical_disclaimer"):
+                            st.caption(f"ℹ️ *{msg['clinical_disclaimer']}*")
+
                 # Show intent tag if available
                 if msg.get("intent") and msg["role"] == "assistant":
                     st.caption(f"Detected Intent: `{msg['intent']}`")
@@ -311,7 +425,6 @@ else:
 
                 # If HITL Approval is required for this message and status is pending
                 if msg.get("approval_required") and msg.get("approval_status") == "pending" and msg["role"] == "assistant":
-                    # --- Phase 5 Milestone 4: Slot-specific HITL Confirmation Card ---
                     slot = msg.get("selected_slot") or {}
                     doctor = slot.get("doctor_name", "the requested doctor")
                     specialty = slot.get("specialty", "")
@@ -355,7 +468,7 @@ else:
                                         "approval_required": False,
                                         "approval_status": "approved"
                                     })
-                                    st.success("✅ Appointment approved and booked. Check 📅 My Appointments.")
+                                    st.success("✅ Appointment approved and booked! Automated SMS confirmation dispatched.")
                                     st.rerun()
                                 elif res.status_code == 401:
                                     st.error("Session expired. Please log out and sign in again.")
@@ -394,14 +507,14 @@ else:
                                 st.error(f"Could not connect to service: {e}")
                 elif msg.get("approval_status") in ["approved", "rejected"] and msg["role"] == "assistant":
                     st.caption(f"Decision Recorded: `{msg['approval_status'].capitalize()}`")
-                
+
         # Chat input
-        if prompt := st.chat_input("Tell me what you'd like to coordinate..."):
+        if prompt := st.chat_input("Tell me what you'd like to coordinate (or use Voice / Document tools above)..."):
             # Display user message
             with st.chat_message("user"):
                 st.markdown(prompt)
             st.session_state.chat_history.append({"role": "user", "content": prompt})
-            
+
             # Send query to backend API
             try:
                 res = httpx.post(
@@ -414,7 +527,7 @@ else:
                     response_text = data["message"]
                     intent = data["intent"]
                     is_mock = data["is_mock"]
-                    
+
                     st.session_state.chat_history.append({
                         "role": "assistant",
                         "content": response_text,
@@ -427,7 +540,6 @@ else:
                         "follow_up_questions": data.get("follow_up_questions", []),
                         "sources": data.get("sources", []),
                         "selected_slot": data.get("selected_slot")
-
                     })
                     st.rerun()
 

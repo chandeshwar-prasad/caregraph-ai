@@ -1,12 +1,15 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Query
+from fastapi import FastAPI, Depends, HTTPException, status, Query, Form, File, UploadFile, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
+import os
+import base64
+import logging
 
 from app import models, schemas, crud, auth, schemas_ai
-from app.services import patient_data
+from app.services import patient_data, voice, vision, messaging
 from app.services.llm import (
     get_llm_service,
     LLMAuthenticationError,
@@ -16,9 +19,6 @@ from app.services.llm import (
     LLMError
 )
 from app.database import engine, SessionLocal, get_db
-
-import os
-import logging
 from langgraph.types import Command
 from app.services.graph import graph
 
@@ -144,33 +144,39 @@ def get_all_patients(
     return patients
 
 
-@app.post("/chat", response_model=schemas_ai.ChatResponse)
-def chat_coordination(
-    request: schemas_ai.ChatRequest,
-    current_user: models.User = Depends(auth.require_role("patient")),
-    db: Session = Depends(get_db)
-):
+def _execute_agent_graph(
+    user_message: str,
+    user_id: int,
+    user_role: str,
+    session_id: Optional[str] = None,
+    use_fhir: bool = False,
+    fhir_patient_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Central execution helper for the LangGraph multi-agent cognitive workflow.
+    Normalizes graph state execution and human-in-the-loop interruption handling.
+    """
     try:
-        user_session_key = request.session_id or "default"
-        thread_id = f"user_{current_user.id}_{user_session_key}"
+        user_session_key = session_id or "default"
+        thread_id = f"user_{user_id}_{user_session_key}"
         config = {"configurable": {"thread_id": thread_id}}
-        
+
         initial_state = {
-            "user_message": request.message,
-            "user_id": current_user.id,
-            "user_role": current_user.role,
+            "user_message": user_message,
+            "user_id": user_id,
+            "user_role": user_role,
             "session_id": thread_id,
-            "use_fhir": request.use_fhir or False,
-            "fhir_patient_id": request.fhir_patient_id
+            "use_fhir": use_fhir or False,
+            "fhir_patient_id": fhir_patient_id
         }
-        
+
         graph.invoke(initial_state, config=config)
         snapshot = graph.get_state(config)
         state_values = snapshot.values
-        
+
         # Check if execution interrupted for HITL approval
         is_interrupted = len(snapshot.tasks) > 0 and len(snapshot.tasks[0].interrupts) > 0
-        
+
         if is_interrupted:
             interrupt_val = snapshot.tasks[0].interrupts[0].value
             msg = interrupt_val.get("message") if isinstance(interrupt_val, dict) else str(interrupt_val)
@@ -229,12 +235,145 @@ def chat_coordination(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="The AI assistant is currently busy. Please wait a moment and retry."
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Unhandled error in chat endpoint: {e}", exc_info=True)
+        logger.error(f"Unhandled error in agent graph execution: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="The care coordination service encountered an error processing your request."
         )
+
+
+@app.post("/chat", response_model=schemas_ai.ChatResponse)
+def chat_coordination(
+    request: schemas_ai.ChatRequest,
+    current_user: models.User = Depends(auth.require_role("patient")),
+    db: Session = Depends(get_db)
+):
+    """
+    Standard text-based conversational care coordination agent endpoint.
+    """
+    return _execute_agent_graph(
+        user_message=request.message,
+        user_id=current_user.id,
+        user_role=current_user.role,
+        session_id=request.session_id,
+        use_fhir=request.use_fhir or False,
+        fhir_patient_id=request.fhir_patient_id
+    )
+
+
+@app.post("/chat/voice", response_model=schemas_ai.VoiceChatResponse)
+async def chat_voice_coordination(
+    file: UploadFile = File(..., description="Audio recording of patient speech (in-memory processing only)"),
+    session_id: Optional[str] = Form(None),
+    use_fhir: Optional[bool] = Form(False),
+    fhir_patient_id: Optional[str] = Form(None),
+    synthesize_voice: Optional[bool] = Form(True),
+    current_user: models.User = Depends(auth.require_role("patient")),
+    db: Session = Depends(get_db)
+):
+    """
+    Agentic Voice-to-Voice Conversation Pipeline.
+    Transcribes speech in-memory, injects into LangGraph orchestrator, and synthesizes audio response.
+    """
+    audio_bytes = await file.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty audio recording payload.")
+
+    # 1. Transcribe Speech
+    stt_service = voice.get_stt_service()
+    stt_result = stt_service.transcribe(
+        audio_bytes=audio_bytes,
+        filename=file.filename or "speech.wav",
+        content_type=file.content_type or "audio/wav"
+    )
+    transcribed_text = stt_result.get("transcript", "").strip()
+    if not transcribed_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Could not transcribe intelligible speech.")
+
+    # 2. Invoke Cognitive Agent Graph
+    agent_result = _execute_agent_graph(
+        user_message=transcribed_text,
+        user_id=current_user.id,
+        user_role=current_user.role,
+        session_id=session_id,
+        use_fhir=use_fhir or False,
+        fhir_patient_id=fhir_patient_id
+    )
+
+    # 3. Optional Voice Synthesis (TTS) of reply
+    audio_b64 = None
+    media_type = "audio/wav"
+    if synthesize_voice and agent_result.get("message"):
+        try:
+            tts_service = voice.get_tts_service()
+            tts_result = tts_service.synthesize(text=agent_result["message"])
+            audio_b64 = base64.b64encode(tts_result["audio_bytes"]).decode("utf-8")
+            media_type = tts_result.get("media_type", "audio/wav")
+        except Exception as e:
+            logger.warning(f"Voice synthesis skipped or failed: {e}")
+
+    return {
+        **agent_result,
+        "transcribed_text": transcribed_text,
+        "audio_base64": audio_b64,
+        "audio_media_type": media_type
+    }
+
+
+@app.post("/chat/vision", response_model=schemas_ai.VisionChatResponse)
+async def chat_vision_coordination(
+    file: UploadFile = File(..., description="Image or document to analyze (in-memory processing only)"),
+    message: Optional[str] = Form(None, description="Optional question or comment regarding the document"),
+    session_id: Optional[str] = Form(None),
+    use_fhir: Optional[bool] = Form(False),
+    fhir_patient_id: Optional[str] = Form(None),
+    current_user: models.User = Depends(auth.require_role("patient")),
+    db: Session = Depends(get_db)
+):
+    """
+    Agentic Medical Document & Visual Observation Analysis Pipeline.
+    Extracts visual observations/text and feeds into LangGraph orchestrator for clinical care navigation.
+    """
+    image_bytes = await file.read()
+    if not image_bytes:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty image or document payload.")
+
+    # 1. Analyze Visual Document
+    vision_service = vision.get_vision_service()
+    vision_result = vision_service.analyze_image(
+        image_bytes=image_bytes,
+        filename=file.filename or "document.png",
+        content_type=file.content_type or "image/png"
+    )
+
+    detected_features = vision_result.get("detected_features", [])
+    description = vision_result.get("description", "")
+
+    # 2. Formulate enriched multimodal prompt for LangGraph Agent
+    prompt_prefix = message.strip() if message and message.strip() else "Please review this uploaded medical document/observation."
+    agent_message = f"{prompt_prefix}\n\n[Uploaded Document/Image Analysis]: {description}"
+    if detected_features:
+        agent_message += f"\nDetected Elements: {', '.join(detected_features)}"
+
+    # 3. Invoke Cognitive Agent Graph
+    agent_result = _execute_agent_graph(
+        user_message=agent_message,
+        user_id=current_user.id,
+        user_role=current_user.role,
+        session_id=session_id,
+        use_fhir=use_fhir or False,
+        fhir_patient_id=fhir_patient_id
+    )
+
+    return {
+        **agent_result,
+        "vision_analysis": vision_result,
+        "extracted_observations": detected_features,
+        "clinical_disclaimer": vision_result.get("clinical_disclaimer", "CareGraph AI Vision is for care navigation and symptom observation assistance only, and does not provide clinical diagnosis or diagnostic decisions.")
+    }
 
 
 @app.post("/chat/approve", response_model=schemas_ai.ChatResponse)
@@ -264,6 +403,22 @@ def approve_coordination(
             Command(resume={"approval_status": request.decision}),
             config=config
         )
+
+        # Automated Multichannel Notification on Appointment Approval
+        if request.decision == "approved":
+            try:
+                patient = db.query(models.Patient).filter(models.Patient.user_id == current_user.id).first()
+                slot = resumed_state.get("selected_slot") or {}
+                phone = patient.phone if (patient and patient.phone) else "+15551234567"
+                doctor = slot.get("doctor_name", "your care specialist")
+                apt_time = slot.get("appointment_time", "your scheduled appointment")
+                body = f"CareGraph AI Confirmation: Your appointment with {doctor} is confirmed for {apt_time}."
+                
+                messaging_svc = messaging.get_messaging_service(channel="sms")
+                messaging_svc.send_message(recipient=phone, body=body, channel="sms")
+                logger.info(f"Dispatched appointment confirmation SMS to {phone[:4]}***")
+            except Exception as notify_err:
+                logger.warning(f"Automated appointment notification skipped/failed: {notify_err}")
 
         return {
             "message": resumed_state.get("final_response", resumed_state.get("response_draft", "")),
