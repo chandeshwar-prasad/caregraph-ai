@@ -150,6 +150,23 @@ class TelemetryCollector:
         self.traces.append(sanitized)
         if len(self.traces) > self.max_traces:
             self.traces.pop(0)
+
+        # Bridge to Prometheus Metrics
+        try:
+            from app.services import observability
+            observability.record_node_execution(
+                node_name=selected_agent,
+                status=status.lower(),
+                latency_seconds=max(0.001, latency_ms / 1000.0)
+            )
+            observability.record_intent_classification(detected_intent=intent)
+            if safety_escalated:
+                observability.record_safety_escalation(escalation_type="red_flag", risk_level="emergency")
+            if tool_name:
+                observability.record_tool_execution(tool_name=tool_name, status=status.lower())
+        except Exception as obs_err:
+            logger.debug(f"Observability bridge error: {obs_err}")
+
         return sanitized
 
     def get_summary(self) -> Dict[str, Any]:
@@ -290,6 +307,18 @@ class TokenCostTracker:
         if len(self.workflow_costs) > 200:
             self.workflow_costs.pop(0)
 
+        # Bridge to Prometheus Metrics
+        try:
+            from app.services import observability
+            observability.record_llm_usage(
+                model=model,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens
+            )
+            observability.update_cost_gauge(self.total_cost_usd)
+        except Exception as obs_err:
+            logger.debug(f"Observability cost update error: {obs_err}")
+
         return cost
 
     def get_cost_summary(self) -> Dict[str, Any]:
@@ -335,4 +364,13 @@ def trace_span(name: str, span_type: str = "custom", attributes: Optional[Dict[s
         raise
     finally:
         global_telemetry.record_span(span)
+        try:
+            from app.services import observability
+            observability.record_node_execution(
+                node_name=span.name,
+                status=span.status.lower(),
+                latency_seconds=max(0.001, span.duration_ms / 1000.0)
+            )
+        except Exception:
+            pass
 

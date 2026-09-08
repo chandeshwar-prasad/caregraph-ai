@@ -1,0 +1,227 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": true,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "CareGraph AI — Operational Telemetry & Safety Overview",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth" },
+          "unit": "reqps"
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "sum by (node_name) (rate(caregraph_graph_node_executions_total[5m]))",
+          "legendFormat": "Node: {{node_name}}"
+        }
+      ],
+      "title": "Graph Node Throughput (req/sec)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth" },
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 1 },
+      "id": 2,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "histogram_quantile(0.95, sum by (le, node_name) (rate(caregraph_graph_node_latency_seconds_bucket[5m])))",
+          "legendFormat": "{{node_name}} (p95)"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "histogram_quantile(0.50, sum by (le, node_name) (rate(caregraph_graph_node_latency_seconds_bucket[5m])))",
+          "legendFormat": "{{node_name}} (p50)"
+        }
+      ],
+      "title": "Graph Node Execution Latency (p95 / p50)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "bars", "fillOpacity": 60 },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 },
+      "id": 3,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "sum by (escalation_type, risk_level) (increase(caregraph_safety_escalations_total[1h]))",
+          "legendFormat": "Escalation: {{escalation_type}} [{{risk_level}}]"
+        }
+      ],
+      "title": "Deterministic Safety & Emergency Escalations (Last 1h)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "id": 101,
+      "title": "HL7 FHIR R4 EHR Interoperability Gateway",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth" },
+          "unit": "reqps"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "id": 4,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "sum by (resource_type, status) (rate(caregraph_fhir_api_calls_total[5m]))",
+          "legendFormat": "{{resource_type}} ({{status}})"
+        }
+      ],
+      "title": "FHIR API Query Rate by Resource",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth" },
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "id": 5,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "histogram_quantile(0.95, sum by (le, resource_type) (rate(caregraph_fhir_api_latency_seconds_bucket[5m])))",
+          "legendFormat": "{{resource_type}} Latency (p95)"
+        }
+      ],
+      "title": "FHIR EHR Server Latency (p95)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "id": 102,
+      "title": "LLM Token Cost Accounting & Model Routing",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1.0 },
+              { "color": "red", "value": 5.0 }
+            ]
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 19 },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "caregraph_estimated_total_cost_usd",
+          "legendFormat": "Estimated Cumulative Cost ($ USD)"
+        }
+      ],
+      "title": "Cumulative LLM Inference Cost",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth" },
+          "unit": "tokens/sec"
+        }
+      },
+      "gridPos": { "h": 8, "w": 18, "x": 6, "y": 19 },
+      "id": 7,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "sum by (model, token_type) (rate(caregraph_llm_token_usage_total_sum[5m]))",
+          "legendFormat": "{{model}} [{{token_type}} tokens]"
+        }
+      ],
+      "title": "Token Consumption Rate by Model Tier",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["caregraph-ai", "healthcare", "fhir", "observability"],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m"]
+  },
+  "timezone": "browser",
+  "title": "CareGraph AI — Production Agent Observability Dashboard",
+  "uid": "caregraph-ai-agent-obs",
+  "version": 1
+}

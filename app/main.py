@@ -159,7 +159,9 @@ def chat_coordination(
             "user_message": request.message,
             "user_id": current_user.id,
             "user_role": current_user.role,
-            "session_id": thread_id
+            "session_id": thread_id,
+            "use_fhir": request.use_fhir or False,
+            "fhir_patient_id": request.fhir_patient_id
         }
         
         graph.invoke(initial_state, config=config)
@@ -495,7 +497,19 @@ def revoke_my_consent(
     )
 
 
-# --- Phase 9 Observability & Telemetry Endpoints ---
+# --- Phase 9 & 11 Observability & Telemetry Endpoints ---
+
+from app.services.observability import generate_prometheus_metrics
+
+@app.get("/metrics")
+def prometheus_metrics():
+    """
+    Standard Prometheus-compatible metrics scraping endpoint.
+    Emits operational counters, latency histograms, token tracking, and FHIR metrics with Zero PHI.
+    """
+    content, media_type = generate_prometheus_metrics()
+    return Response(content=content, media_type=media_type)
+
 
 from app.services.telemetry import global_telemetry
 

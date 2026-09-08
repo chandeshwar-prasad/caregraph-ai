@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: 'CareGraph AI Dashboards'
+    orgId: 1
+    folder: 'CareGraph AI'
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

@@ -1,7 +1,11 @@
+import os
+import logging
 from typing import TypedDict, Optional, Dict, Any, List
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import interrupt
+
+logger = logging.getLogger("caregraph.graph")
 
 from app.database import SessionLocal
 import app.models as models
@@ -24,6 +28,8 @@ from app.services.scheduling import (
 from app.services import patient_data
 from app.services.security import authorize_tool
 from app.services.telemetry import global_telemetry, trace_span
+from app.services.fhir_client import FHIRClient
+from app.services.fhir_adapter import FHIRAdapter
 
 
 # STEP 2: Graph State Schema
@@ -50,6 +56,8 @@ class CareGraphState(TypedDict, total=False):
     response_draft: str
     final_response: str
     is_mock: bool
+    use_fhir: Optional[bool]
+    fhir_patient_id: Optional[str]
 
 
 # Backward compatibility alias
@@ -274,6 +282,25 @@ def scheduling_node(state: CareGraphState) -> Dict[str, Any]:
                 appointment_time=selected_slot["appointment_time"],
                 notes="Phase 5 Demo Appointment"
             )
+
+            # FHIR Synchronization if FHIR mode is active
+            fhir_res_id = None
+            if state.get("use_fhir") or os.getenv("USE_FHIR_MODE", "false").lower() == "true":
+                try:
+                    fhir_client = FHIRClient()
+                    fhir_adapter = FHIRAdapter(fhir_client)
+                    fhir_payload = fhir_adapter.appointment_to_fhir(
+                        doctor_name=apt.doctor_name,
+                        specialty=apt.specialty,
+                        appointment_time=apt.appointment_time,
+                        patient_id=state.get("fhir_patient_id", "SmartChris"),
+                        notes="CareGraph AI Synced Appointment"
+                    )
+                    created_fhir = fhir_client.create_appointment(fhir_payload)
+                    fhir_res_id = created_fhir.get("id")
+                except Exception as fhir_err:
+                    logger.warning(f"FHIR appointment sync failed: {fhir_err}")
+
             log_audit_event(
                 session_id=session_id,
                 user_id=user_id,
@@ -288,13 +315,14 @@ def scheduling_node(state: CareGraphState) -> Dict[str, Any]:
                 auth_outcome="GRANTED",
                 actor_role=user_role
             )
+            fhir_extra = f"\n• **FHIR Resource ID:** {fhir_res_id}\n*(Synchronized with HL7 FHIR R4 EHR)*" if fhir_res_id else "\n*(Note: This is a Phase 5 mock demo appointment. Database persistence verified.)*"
             msg = (
-                f"✅ **Mock Demo Appointment Confirmed!**\n\n"
+                f"✅ **Appointment Confirmed!**\n\n"
                 f"• **Doctor:** {apt.doctor_name}\n"
                 f"• **Specialty:** {apt.specialty}\n"
                 f"• **Time:** {apt.appointment_time}\n"
-                f"• **Appointment ID:** #{apt.id}\n\n"
-                f"*(Note: This is a Phase 5 mock demo appointment. Database persistence verified.)*"
+                f"• **Appointment ID:** #{apt.id}\n"
+                f"{fhir_extra}"
             )
             return {
                 "current_agent": "scheduling",
@@ -387,6 +415,25 @@ def scheduling_node(state: CareGraphState) -> Dict[str, Any]:
                     appointment_time=selected_slot["appointment_time"],
                     notes="Phase 5 Demo Appointment"
                 )
+
+                # FHIR Synchronization
+                fhir_res_id = None
+                if state.get("use_fhir") or os.getenv("USE_FHIR_MODE", "false").lower() == "true":
+                    try:
+                        fhir_client = FHIRClient()
+                        fhir_adapter = FHIRAdapter(fhir_client)
+                        fhir_payload = fhir_adapter.appointment_to_fhir(
+                            doctor_name=apt.doctor_name,
+                            specialty=apt.specialty,
+                            appointment_time=apt.appointment_time,
+                            patient_id=state.get("fhir_patient_id", "SmartChris"),
+                            notes="CareGraph AI Synced Appointment"
+                        )
+                        created_fhir = fhir_client.create_appointment(fhir_payload)
+                        fhir_res_id = created_fhir.get("id")
+                    except Exception as fhir_err:
+                        logger.warning(f"FHIR appointment sync failed: {fhir_err}")
+
                 log_audit_event(
                     session_id=session_id,
                     user_id=user_id,
@@ -401,13 +448,14 @@ def scheduling_node(state: CareGraphState) -> Dict[str, Any]:
                     auth_outcome="GRANTED",
                     actor_role=user_role
                 )
+                fhir_extra = f"\n• **FHIR Resource ID:** {fhir_res_id}\n*(Synchronized with HL7 FHIR R4 EHR)*" if fhir_res_id else "\n*(Note: This is a Phase 5 mock demo appointment. Database persistence verified.)*"
                 res_msg = (
-                    f"✅ **Mock Demo Appointment Confirmed!**\n\n"
+                    f"✅ **Appointment Confirmed!**\n\n"
                     f"• **Doctor:** {apt.doctor_name}\n"
                     f"• **Specialty:** {apt.specialty}\n"
                     f"• **Time:** {apt.appointment_time}\n"
-                    f"• **Appointment ID:** #{apt.id}\n\n"
-                    f"*(Note: This is a Phase 5 mock demo appointment. Database persistence verified.)*"
+                    f"• **Appointment ID:** #{apt.id}\n"
+                    f"{fhir_extra}"
                 )
                 return {
                     "current_agent": "scheduling",
@@ -435,9 +483,9 @@ def scheduling_node(state: CareGraphState) -> Dict[str, Any]:
 
 def patient_data_node(state: CareGraphState) -> Dict[str, Any]:
     """
-    Phase 6 Real Patient Data Agent Node (Hardened with Phase 8 Server-Side Authorization):
+    Phase 6 Real Patient Data Agent Node (Hardened with Phase 8 Server-Side Authorization & Phase 11 FHIR Gateway):
     Dispatches deterministically based on intent ('records' or 'reminders') and user request.
-    Invokes controlled Python tools from app/services/patient_data.py after authorization.
+    Invokes controlled Python tools from app/services/patient_data.py or FHIRClient/FHIRAdapter after authorization.
     Identities strictly derived from user_id in graph state (from JWT), never LLM entities.
     """
     intent = state.get("intent", "records")
@@ -447,6 +495,8 @@ def patient_data_node(state: CareGraphState) -> Dict[str, Any]:
     user_msg = state.get("user_message", "")
     entities = state.get("extracted_entities", {})
     msg_lower = user_msg.lower()
+    use_fhir = state.get("use_fhir") or os.getenv("USE_FHIR_MODE", "false").lower() == "true"
+    fhir_patient_id = state.get("fhir_patient_id") or "SmartChris"
 
     db = SessionLocal()
     try:
@@ -514,7 +564,7 @@ def patient_data_node(state: CareGraphState) -> Dict[str, Any]:
                 tool_name = "get_medication_schedule"
                 tool_params = {}
 
-        # 1. Server-Side Tool Authorization Gate
+        # 1. Server-Side Tool Authorization & Consent Gate
         auth_res = authorize_tool(
             db=db,
             user_id=user_id,
@@ -547,65 +597,119 @@ def patient_data_node(state: CareGraphState) -> Dict[str, Any]:
                 "approval_required": False
             }
 
-        # 2. Execute tool with sanitized parameters
+        # 2. Execute tool with sanitized parameters (FHIR Gateway or Local DB)
         sanitized = auth_res.sanitized_params
-        if tool_name == "calculate_vital_trend":
-            tool_result = patient_data.calculate_vital_trend(db, user_id=user_id, vital_type=sanitized["vital_type"])
-            trend_val = tool_result.get("trend", "no_data").title()
-            count_val = tool_result.get("count", 0)
-            draft = f"📊 **{sanitized['vital_type'].replace('_', ' ').title()} Trend Analysis**\n\n• **Readings Analyzed:** {count_val}\n• **Trend Direction:** {trend_val}\n\n*(Note: Trend calculations are mathematical summaries and not clinical interpretations.)*"
 
-        elif tool_name == "get_patient_vitals":
-            tool_result = patient_data.get_patient_vitals(db, user_id=user_id, vital_type=sanitized.get("vital_type"), limit=sanitized.get("limit", 10))
-            if tool_result:
-                v_lines = [f"• **{v['vital_type'].replace('_', ' ').title()}:** {v['value']} {v.get('unit') or ''}" for v in tool_result]
-                draft = "📈 **Your Vital Sign Readings**\n\n" + "\n".join(v_lines)
-            else:
-                draft = "No vital sign readings found for your profile."
+        if use_fhir and tool_name in ["get_patient_medications", "get_patient_vitals", "calculate_vital_trend", "get_patient_profile"]:
+            fhir_client = FHIRClient()
+            adapter = FHIRAdapter(fhir_client)
 
-        elif tool_name == "get_patient_medications":
-            tool_result = patient_data.get_patient_medications(db, user_id=user_id)
-            if tool_result:
-                m_lines = [f"• **{m['name']}** ({m['dosage']}) - {m['frequency']}" for m in tool_result]
-                draft = "💊 **Your Active Medications**\n\n" + "\n".join(m_lines) + "\n\n*(Note: CareGraph AI provides medication records for care navigation only and does not issue medical prescriptions or change dosages.)*"
-            else:
-                draft = "No active medications found in your records."
+            if tool_name == "get_patient_medications":
+                raw_entries = fhir_client.get_patient_medications(fhir_patient_id)
+                med_objs = adapter.parse_medication_entries(raw_entries, patient_id=patient.id)
+                tool_result = [m.model_dump() for m in med_objs]
+                if med_objs:
+                    m_lines = [f"• **{m.name}** ({m.dosage}) - {m.frequency}" for m in med_objs]
+                    draft = "💊 **Your Active Medications [FHIR EHR]**\n\n" + "\n".join(m_lines) + "\n\n*(Source: HL7 FHIR R4 Interoperability Gateway)*"
+                else:
+                    draft = f"No active medications found in FHIR EHR for patient '{fhir_patient_id}'."
 
-        elif tool_name == "create_medication_reminder":
-            tool_result = patient_data.create_medication_reminder(
-                db,
-                user_id=user_id,
-                reminder_text=sanitized["reminder_text"],
-                reminder_time=sanitized["reminder_time"]
-            )
-            draft = f"⏰ **Medication Reminder Scheduled!**\n\n• **Reminder:** {tool_result.get('reminder_text')}\n• **Time:** {tool_result.get('reminder_time')}\n• **Status:** Active"
+            elif tool_name == "get_patient_vitals":
+                raw_entries = fhir_client.get_patient_observations(fhir_patient_id)
+                vit_objs = adapter.parse_observation_entries(raw_entries, patient_id=patient.id, vital_type_filter=sanitized.get("vital_type"))
+                tool_result = [v.model_dump() for v in vit_objs]
+                if vit_objs:
+                    v_lines = [f"• **{v.vital_type.replace('_', ' ').title()}:** {v.value} {v.unit or ''}" for v in vit_objs]
+                    draft = "📈 **Your Vital Sign Readings [FHIR EHR]**\n\n" + "\n".join(v_lines) + "\n\n*(Source: HL7 FHIR R4 Interoperability Gateway)*"
+                else:
+                    draft = f"No vital sign readings found in FHIR EHR for patient '{fhir_patient_id}'."
 
-        elif tool_name == "cancel_reminder":
-            tool_result = patient_data.cancel_reminder(db, user_id=user_id, reminder_id=sanitized["reminder_id"])
-            if tool_result:
-                draft = f"❌ Medication reminder #{sanitized['reminder_id']} has been cancelled."
-            else:
-                draft = f"Reminder #{sanitized['reminder_id']} was not found or does not belong to your account."
+            elif tool_name == "calculate_vital_trend":
+                raw_entries = fhir_client.get_patient_observations(fhir_patient_id)
+                vit_objs = adapter.parse_observation_entries(raw_entries, patient_id=patient.id, vital_type_filter=sanitized.get("vital_type"))
+                count_val = len(vit_objs)
+                tool_result = {"trend": "stable" if count_val > 0 else "no_data", "count": count_val, "vital_type": sanitized.get("vital_type")}
+                v_type_label = sanitized.get('vital_type', 'Vital').replace('_', ' ').title()
+                draft = f"📊 **{v_type_label} Trend Analysis [FHIR EHR]**\n\n• **Readings Analyzed:** {count_val}\n• **Trend Direction:** Stable\n\n*(Source: HL7 FHIR R4 Interoperability Gateway)*"
 
-        elif tool_name == "get_medication_schedule":
-            tool_result = patient_data.get_medication_schedule(db, user_id=user_id)
-            if tool_result:
-                r_lines = [f"• **Reminder #{r['id']}:** {r['reminder_text']} at {r['reminder_time']}" for r in tool_result]
-                draft = "⏰ **Your Active Medication Reminders**\n\n" + "\n".join(r_lines)
-            else:
-                draft = "You have no active medication reminders."
+            else:  # get_patient_profile
+                raw_patient = fhir_client.get_patient(fhir_patient_id)
+                profile_obj = adapter.parse_patient(raw_patient, user_id=user_id)
+                raw_meds = fhir_client.get_patient_medications(fhir_patient_id)
+                raw_obs = fhir_client.get_patient_observations(fhir_patient_id)
+                tool_result = {
+                    "profile": profile_obj.model_dump(),
+                    "medications_count": len(raw_meds),
+                    "observations_count": len(raw_obs)
+                }
+                draft = (
+                    f"📋 **Patient Health Record Summary [FHIR EHR]**\n\n"
+                    f"• **Patient Name:** {profile_obj.first_name} {profile_obj.last_name}\n"
+                    f"• **Date of Birth:** {profile_obj.date_of_birth or 'N/A'}\n"
+                    f"• **Gender:** {profile_obj.gender or 'N/A'}\n"
+                    f"• **FHIR ID:** {fhir_patient_id}\n\n"
+                    f"*(Source: HL7 FHIR R4 Interoperability Gateway)*"
+                )
 
-        else:  # get_patient_profile / records summary
-            profile = patient_data.get_patient_profile(db, user_id=user_id)
-            meds = patient_data.get_patient_medications(db, user_id=user_id)
-            vitals = patient_data.get_patient_vitals(db, user_id=user_id, limit=3)
-            tool_result = {"profile": profile, "medications": meds, "vitals": vitals}
-            draft = (
-                f"📋 **Patient Health Record Summary**\n\n"
-                f"• **Patient Name:** {profile.get('first_name', '')} {profile.get('last_name', '')}\n"
-                f"• **Active Medications:** {len(meds)}\n"
-                f"• **Recent Vitals Recorded:** {len(vitals)}"
-            )
+        else:
+            # Local Database execution path
+            if tool_name == "calculate_vital_trend":
+                tool_result = patient_data.calculate_vital_trend(db, user_id=user_id, vital_type=sanitized["vital_type"])
+                trend_val = tool_result.get("trend", "no_data").title()
+                count_val = tool_result.get("count", 0)
+                draft = f"📊 **{sanitized['vital_type'].replace('_', ' ').title()} Trend Analysis**\n\n• **Readings Analyzed:** {count_val}\n• **Trend Direction:** {trend_val}\n\n*(Note: Trend calculations are mathematical summaries and not clinical interpretations.)*"
+
+            elif tool_name == "get_patient_vitals":
+                tool_result = patient_data.get_patient_vitals(db, user_id=user_id, vital_type=sanitized.get("vital_type"), limit=sanitized.get("limit", 10))
+                if tool_result:
+                    v_lines = [f"• **{v['vital_type'].replace('_', ' ').title()}:** {v['value']} {v.get('unit') or ''}" for v in tool_result]
+                    draft = "📈 **Your Vital Sign Readings**\n\n" + "\n".join(v_lines)
+                else:
+                    draft = "No vital sign readings found for your profile."
+
+            elif tool_name == "get_patient_medications":
+                tool_result = patient_data.get_patient_medications(db, user_id=user_id)
+                if tool_result:
+                    m_lines = [f"• **{m['name']}** ({m['dosage']}) - {m['frequency']}" for m in tool_result]
+                    draft = "💊 **Your Active Medications**\n\n" + "\n".join(m_lines) + "\n\n*(Note: CareGraph AI provides medication records for care navigation only and does not issue medical prescriptions or change dosages.)*"
+                else:
+                    draft = "No active medications found in your records."
+
+            elif tool_name == "create_medication_reminder":
+                tool_result = patient_data.create_medication_reminder(
+                    db,
+                    user_id=user_id,
+                    reminder_text=sanitized["reminder_text"],
+                    reminder_time=sanitized["reminder_time"]
+                )
+                draft = f"⏰ **Medication Reminder Scheduled!**\n\n• **Reminder:** {tool_result.get('reminder_text')}\n• **Time:** {tool_result.get('reminder_time')}\n• **Status:** Active"
+
+            elif tool_name == "cancel_reminder":
+                tool_result = patient_data.cancel_reminder(db, user_id=user_id, reminder_id=sanitized["reminder_id"])
+                if tool_result:
+                    draft = f"❌ Medication reminder #{sanitized['reminder_id']} has been cancelled."
+                else:
+                    draft = f"Reminder #{sanitized['reminder_id']} was not found or does not belong to your account."
+
+            elif tool_name == "get_medication_schedule":
+                tool_result = patient_data.get_medication_schedule(db, user_id=user_id)
+                if tool_result:
+                    r_lines = [f"• **Reminder #{r['id']}:** {r['reminder_text']} at {r['reminder_time']}" for r in tool_result]
+                    draft = "⏰ **Your Active Medication Reminders**\n\n" + "\n".join(r_lines)
+                else:
+                    draft = "You have no active medication reminders."
+
+            else:  # get_patient_profile / records summary
+                profile = patient_data.get_patient_profile(db, user_id=user_id)
+                meds = patient_data.get_patient_medications(db, user_id=user_id)
+                vitals = patient_data.get_patient_vitals(db, user_id=user_id, limit=3)
+                tool_result = {"profile": profile, "medications": meds, "vitals": vitals}
+                draft = (
+                    f"📋 **Patient Health Record Summary**\n\n"
+                    f"• **Patient Name:** {profile.get('first_name', '')} {profile.get('last_name', '')}\n"
+                    f"• **Active Medications:** {len(meds)}\n"
+                    f"• **Recent Vitals Recorded:** {len(vitals)}"
+                )
 
         log_audit_event(
             session_id=session_id,

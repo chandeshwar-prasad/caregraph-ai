@@ -26,6 +26,8 @@ class IntentExtraction(BaseModel):
 class ChatRequest(BaseModel):
     message: str = Field(..., description="The user's query message.")
     session_id: Optional[str] = Field(None, description="Optional conversation/thread session identifier.")
+    use_fhir: Optional[bool] = Field(default=False, description="Flag to query HL7 FHIR R4 interoperability layer.")
+    fhir_patient_id: Optional[str] = Field(None, description="Optional target FHIR patient identifier (e.g. 'SmartChris').")
 
 class ApprovalRequest(BaseModel):
     session_id: Optional[str] = Field(None, description="Conversation/thread session identifier.")
