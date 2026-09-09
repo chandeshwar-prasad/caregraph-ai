@@ -89,7 +89,7 @@ Phase 9 implements production telemetry, quantitative evaluation, and cost analy
 Phase 10 establishes production containerization, CI/CD pipeline automation, and deployment configuration:
 ### **PHASE 11 — HL7 FHIR R4 INTEROPERABILITY & PROMETHEUS/GRAFANA OBSERVABILITY: COMPLETE**
 Phase 11 establishes healthcare standard interoperability and enterprise monitoring:
-- **HL7 FHIR R4 Interoperability Gateway (`app/services/fhir_client.py`, `app/services/fhir_adapter.py`)**: Connects agent workflows to FHIR R4 systems (SMART on FHIR, Cerner, Epic) with automatic LOINC mapping (BP, Heart Rate, SpO2, Weight, Temp), caching, retry backoff, and deterministic mock fallbacks.
+- **HL7 FHIR R4 Interoperability Gateway (`app/services/fhir_client.py`, `app/services/fhir_adapter.py`)**: HL7 FHIR R4 interoperability with the public SMART Health IT reference sandbox; Epic/Cerner-specific connectivity is a documented future extension, with automatic LOINC mapping (BP, Heart Rate, SpO2, Weight, Temp), caching, retry backoff, and deterministic mock fallbacks.
 - **Agent Node FHIR Integration**: `patient_data_node` and `scheduling_node` dynamically retrieve clinical records and synchronize appointments with FHIR EHR servers while strictly enforcing server-side `authorize_tool` and Consent Gates.
 - **Enterprise Prometheus Observability (`app/services/observability.py`)**: Emits standard Prometheus Counters, Histograms, and Gauges tracking graph latency (p95/p50), intent distribution, red-flag safety escalations, token costs, and FHIR transactions with Zero PHI.
 - **Dockerized Observability Stack**: Pre-configured Prometheus server (`:9090`) and Grafana dashboard (`:3000`) containerized in `docker-compose.yml` with automated datasource and dashboard JSON provisioning.
